@@ -87,6 +87,10 @@ jobs:
         run: cargo test --workspace --no-fail-fast
 
       - name: Release build
+        env:
+          FLOX_TMDB_API_KEY: ${{ secrets.FLOX_TMDB_API_KEY }}
+          FLOX_TELEGRAM_API_ID: ${{ secrets.FLOX_TELEGRAM_API_ID }}
+          FLOX_TELEGRAM_API_HASH: ${{ secrets.FLOX_TELEGRAM_API_HASH }}
         run: cargo build --release -p flox-app
 
       - name: Package
