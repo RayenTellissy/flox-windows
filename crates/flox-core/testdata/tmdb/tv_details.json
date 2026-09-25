@@ -1,0 +1,15 @@
+{
+  "id": 1399,
+  "name": "Game of Thrones",
+  "first_air_date": "2011-04-17",
+  "runtime": null,
+  "episode_run_time": [57, 60],
+  "overview": "Seven noble families fight for control.",
+  "poster_path": "/got.jpg",
+  "popularity": 400.25,
+  "seasons": [
+    { "season_number": 0, "name": "Specials", "episode_count": 14 },
+    { "season_number": 1, "name": "Season 1", "episode_count": 10 },
+    { "season_number": 2, "name": "", "episode_count": 10 }
+  ]
+}

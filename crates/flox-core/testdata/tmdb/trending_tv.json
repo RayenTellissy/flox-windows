@@ -1,0 +1,20 @@
+{
+  "page": 1,
+  "results": [
+    {
+      "id": 1399,
+      "name": "Game of Thrones",
+      "first_air_date": "2011-04-17",
+      "poster_path": "/got.jpg",
+      "overview": "Seven noble families fight for control.",
+      "popularity": 400.25,
+      "media_type": "tv"
+    },
+    {
+      "id": 1400,
+      "name": "Posterless Show",
+      "first_air_date": "2012-01-01",
+      "media_type": "tv"
+    }
+  ]
+}

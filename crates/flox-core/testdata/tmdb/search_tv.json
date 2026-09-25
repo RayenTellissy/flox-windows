@@ -1,0 +1,8 @@
+{
+  "page": 1,
+  "results": [
+    { "id": 2996, "name": "Tied With Second", "first_air_date": "2001-03-24", "poster_path": "/2996.jpg", "popularity": 40.0 },
+    { "id": 2316, "name": "The Office", "first_air_date": "2005-03-24", "poster_path": "/office.jpg", "popularity": 60.0 },
+    { "id": 77, "name": "A Person", "poster_path": "/person.jpg", "popularity": 1000.0, "media_type": "person" }
+  ]
+}
