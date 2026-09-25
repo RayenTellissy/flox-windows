@@ -144,6 +144,37 @@ fn path_entries(path_env: Option<&OsStr>) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Finds ffmpeg or ffprobe for the test suites. Order: the `FLOX_FFMPEG` / `FLOX_FFPROBE`
+/// environment override, then `<repo>/deps` and `<repo>/deps/tools` (where
+/// `scripts/fetch-deps.ps1` stages them), then `PATH`, then the usual Homebrew and
+/// `/usr/local` locations on Unix. Other tools only use the directory and `PATH` search.
+pub fn find_for_tests(tool: Tool, repo: &Path) -> Option<PathBuf> {
+    let var = match tool {
+        Tool::Ffmpeg => Some("FLOX_FFMPEG"),
+        Tool::Ffprobe => Some("FLOX_FFPROBE"),
+        _ => None,
+    };
+    let overridden = var
+        .and_then(std::env::var_os)
+        .map(PathBuf::from)
+        .and_then(|p| from_override(tool, &p, cfg!(windows)));
+    if overridden.is_some() {
+        return overridden;
+    }
+    let mut dirs = path_entries(std::env::var_os("PATH").as_deref());
+    if !cfg!(windows) {
+        dirs.extend(["/opt/homebrew/bin", "/usr/local/bin"].map(PathBuf::from));
+    }
+    let path_env = std::env::join_paths(dirs).ok();
+    search(
+        tool,
+        &repo.join("deps"),
+        path_env.as_deref(),
+        None,
+        cfg!(windows),
+    )
+}
+
 /// The ffprobe that sits beside `ffmpeg`: the `ffmpeg` part of the file stem becomes
 /// `ffprobe` (the whole stem when it has no `ffmpeg` in it) and the extension is kept.
 pub fn ffprobe_beside(ffmpeg: &Path) -> PathBuf {

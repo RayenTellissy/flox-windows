@@ -14,6 +14,7 @@ use flox_core::error::{Error, Result};
 use flox_core::model::EpisodeKey;
 use flox_core::settings::{Settings, SettingsStore};
 use flox_core::sniff::{Caption as PageCaption, SniffMode, SniffResult, Sniffer, StreamKind};
+use flox_core::tools::{find_for_tests, Tool};
 use flox_rip::job::{Job, JobState, JobView, Source};
 use flox_rip::queue::{Queue, QueueDeps, QueueHooks, QueueOptions};
 use flox_rip::tools::ToolPaths;
@@ -27,27 +28,29 @@ use tokio_util::sync::CancellationToken;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const FFMPEG: &str = "/opt/homebrew/bin/ffmpeg";
-const FFPROBE: &str = "/opt/homebrew/bin/ffprobe";
 const CHAT: i64 = -100_777;
 const MOVIE: u64 = 603;
 
 fn tools() -> Option<ToolPaths> {
-    let (ffmpeg, ffprobe) = (PathBuf::from(FFMPEG), PathBuf::from(FFPROBE));
-    if ffmpeg.is_file() && ffprobe.is_file() {
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let found = (
+        find_for_tests(Tool::Ffmpeg, &repo),
+        find_for_tests(Tool::Ffprobe, &repo),
+    );
+    if let (Some(ffmpeg), Some(ffprobe)) = found {
         Some(ToolPaths {
             ffmpeg,
             ffprobe,
             ytdlp: None,
         })
     } else {
-        eprintln!("skipped: {FFMPEG} or {FFPROBE} is missing");
+        eprintln!("skipped: ffmpeg or ffprobe not found (set FLOX_FFMPEG / FLOX_FFPROBE or put them on PATH)");
         None
     }
 }
 
 /// A 3 s 320x240 H.264 + AAC clip.
-async fn clip(dir: &Path) -> Vec<u8> {
+async fn clip(ffmpeg: &Path, dir: &Path) -> Vec<u8> {
     let out = dir.join("clip.mp4");
     let args: Vec<OsString> = [
         "-y",
@@ -73,7 +76,7 @@ async fn clip(dir: &Path) -> Vec<u8> {
     .map(OsString::from)
     .chain(std::iter::once(out.clone().into_os_string()))
     .collect();
-    process::run(Path::new(FFMPEG), &args, |_| {}, CancellationToken::new())
+    process::run(ffmpeg, &args, |_| {}, CancellationToken::new())
         .await
         .unwrap();
     std::fs::read(&out).unwrap()
@@ -353,7 +356,7 @@ fn caption(part: u32, parts: u32) -> String {
 async fn link_job_splits_in_three_and_reaches_done() {
     let Some(tools) = tools() else { return };
     let work = tempfile::tempdir().unwrap();
-    let bytes = clip(work.path()).await;
+    let bytes = clip(&tools.ffmpeg, work.path()).await;
     let server = MockServer::start().await;
     let url = serve_clip(&server, &bytes).await;
     let part_size = (bytes.len() as u64).div_ceil(3);
@@ -391,7 +394,7 @@ async fn link_job_splits_in_three_and_reaches_done() {
 async fn page_job_uploads_the_english_caption_as_a_reply() {
     let Some(tools) = tools() else { return };
     let work = tempfile::tempdir().unwrap();
-    let bytes = clip(work.path()).await;
+    let bytes = clip(&tools.ffmpeg, work.path()).await;
     let server = MockServer::start().await;
     let url = serve_clip(&server, &bytes).await;
     Mock::given(method("GET"))
@@ -464,7 +467,7 @@ fn doc_msg(id: i64, name: &str, caption: &str, reply_to: Option<i64>) -> Value {
 async fn replace_deletes_the_previous_print() {
     let Some(tools) = tools() else { return };
     let work = tempfile::tempdir().unwrap();
-    let bytes = clip(work.path()).await;
+    let bytes = clip(&tools.ffmpeg, work.path()).await;
     let server = MockServer::start().await;
     let url = serve_clip(&server, &bytes).await;
     let other = encode(&Caption::new(
@@ -496,7 +499,7 @@ async fn replace_deletes_the_previous_print() {
 async fn a_first_failure_is_retried() {
     let Some(tools) = tools() else { return };
     let work = tempfile::tempdir().unwrap();
-    let bytes = clip(work.path()).await;
+    let bytes = clip(&tools.ffmpeg, work.path()).await;
     let server = MockServer::start().await;
     let url = serve_clip(&server, &bytes).await;
     let r = rig(tools, FakeTd::new(Vec::new(), 1), None, None);
@@ -519,7 +522,7 @@ async fn a_first_failure_is_retried() {
 async fn a_second_failure_fails_the_job() {
     let Some(tools) = tools() else { return };
     let work = tempfile::tempdir().unwrap();
-    let bytes = clip(work.path()).await;
+    let bytes = clip(&tools.ffmpeg, work.path()).await;
     let server = MockServer::start().await;
     let url = serve_clip(&server, &bytes).await;
     let r = rig(tools, FakeTd::new(Vec::new(), 2), None, None);
@@ -593,7 +596,7 @@ async fn cancel_during_download_leaves_no_temp_dir() {
 async fn file_jobs_hard_link_small_files_and_copy_large_ones() {
     let Some(tools) = tools() else { return };
     let work = tempfile::tempdir().unwrap();
-    let bytes = clip(work.path()).await;
+    let bytes = clip(&tools.ffmpeg, work.path()).await;
     let source = work.path().join("Film.2024.1080p.mp4");
     std::fs::write(&source, &bytes).unwrap();
 
@@ -652,7 +655,7 @@ async fn a_missing_file_fails_after_two_attempts() {
 async fn page_job_pulls_hls_with_ffmpeg() {
     let Some(tools) = tools() else { return };
     let work = tempfile::tempdir().unwrap();
-    clip(work.path()).await;
+    clip(&tools.ffmpeg, work.path()).await;
     let hls = work.path().join("hls");
     std::fs::create_dir_all(&hls).unwrap();
     let args: Vec<OsString> = [
@@ -674,7 +677,7 @@ async fn page_job_pulls_hls_with_ffmpeg() {
     .iter()
     .map(OsString::from)
     .collect();
-    process::run(Path::new(FFMPEG), &args, |_| {}, CancellationToken::new())
+    process::run(&tools.ffmpeg, &args, |_| {}, CancellationToken::new())
         .await
         .unwrap();
     let server = MockServer::start().await;

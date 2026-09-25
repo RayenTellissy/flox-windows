@@ -1,6 +1,6 @@
 //! Live libmpv tests. They skip unless `FLOX_LIBMPV` names a libmpv build
 //! (for example `/opt/homebrew/lib/libmpv.dylib` or `libmpv-2.dll`), and need
-//! `ffmpeg` on PATH to generate the test clip.
+//! ffmpeg to generate the test clip (`FLOX_FFMPEG`, `deps/tools`, or `PATH`).
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use flox_core::tools::{find_for_tests, Tool};
 use flox_player::ffi::MpvLib;
 use flox_player::mpv::{Format, Mpv, MpvEvent};
 use flox_player::stream_cb::{self, StreamSource};
@@ -26,10 +27,19 @@ fn libmpv() -> Option<PathBuf> {
     }
 }
 
+fn ffmpeg() -> Option<PathBuf> {
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let found = find_for_tests(Tool::Ffmpeg, &repo);
+    if found.is_none() {
+        eprintln!("skipping: ffmpeg not found (set FLOX_FFMPEG or put it on PATH)");
+    }
+    found
+}
+
 /// A 2 s 320x240 testsrc + sine clip in Matroska.
-fn make_clip(dir: &Path) -> PathBuf {
+fn make_clip(ffmpeg: &Path, dir: &Path) -> PathBuf {
     let out = dir.join("clip.mkv");
-    let status = Command::new("ffmpeg")
+    let status = Command::new(ffmpeg)
         .args([
             "-hide_banner",
             "-loglevel",
@@ -98,8 +108,9 @@ impl StreamSource for CursorSource {
 #[tokio::test(flavor = "multi_thread")]
 async fn plays_a_file_and_a_stream_callback_to_eof() {
     let Some(path) = libmpv() else { return };
+    let Some(ffmpeg) = ffmpeg() else { return };
     let dir = tempfile::tempdir().unwrap();
-    let clip = make_clip(dir.path());
+    let clip = make_clip(&ffmpeg, dir.path());
     let bytes = std::fs::read(&clip).unwrap();
 
     let lib = MpvLib::load(&path).unwrap();

@@ -71,6 +71,9 @@ jobs:
           path: deps/tdjson.dll
           key: tdjson-x64-windows-static-${{ steps.lock.outputs.tdlib }}
 
+      - name: Put the staged tools on PATH
+        run: echo "$env:GITHUB_WORKSPACE\deps\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
+
       - name: Format
         run: cargo fmt --all --check
 
@@ -78,7 +81,10 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
-        run: cargo test --workspace
+        env:
+          FLOX_FFMPEG: ${{ github.workspace }}\deps\tools\ffmpeg.exe
+          FLOX_FFPROBE: ${{ github.workspace }}\deps\tools\ffprobe.exe
+        run: cargo test --workspace --no-fail-fast
 
       - name: Release build
         run: cargo build --release -p flox-app

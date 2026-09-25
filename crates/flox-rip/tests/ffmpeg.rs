@@ -1,5 +1,5 @@
-//! The media pieces against the real Homebrew ffmpeg and ffprobe. Each test is skipped
-//! when the tools are not installed.
+//! The media pieces against a real ffmpeg and ffprobe (`FLOX_FFMPEG` / `FLOX_FFPROBE`,
+//! `deps/tools`, or `PATH`). Each test is skipped when the tools are not found.
 
 use std::ffi::OsString;
 use std::fs;
@@ -7,21 +7,23 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use flox_core::error::{Error, Result};
+use flox_core::tools::{find_for_tests, Tool};
 use flox_rip::{mux, probe, process, split};
 use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const FFMPEG: &str = "/opt/homebrew/bin/ffmpeg";
-const FFPROBE: &str = "/opt/homebrew/bin/ffprobe";
-
 fn tools() -> Option<(PathBuf, PathBuf)> {
-    let (ffmpeg, ffprobe) = (PathBuf::from(FFMPEG), PathBuf::from(FFPROBE));
-    if ffmpeg.is_file() && ffprobe.is_file() {
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let found = (
+        find_for_tests(Tool::Ffmpeg, &repo),
+        find_for_tests(Tool::Ffprobe, &repo),
+    );
+    if let (Some(ffmpeg), Some(ffprobe)) = found {
         Some((ffmpeg, ffprobe))
     } else {
-        eprintln!("skipped: {FFMPEG} or {FFPROBE} is missing");
+        eprintln!("skipped: ffmpeg or ffprobe not found (set FLOX_FFMPEG / FLOX_FFPROBE or put them on PATH)");
         None
     }
 }
@@ -280,9 +282,23 @@ async fn split_parts_concatenate_to_the_original() -> Result<()> {
     Ok(())
 }
 
+#[cfg(not(windows))]
 fn running(marker: &str) -> bool {
     std::process::Command::new("pgrep")
         .args(["-f", marker])
+        .stdout(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+#[cfg(windows)]
+fn running(marker: &str) -> bool {
+    let script = format!(
+        "if (Get-CimInstance Win32_Process -Filter \"Name='ffmpeg.exe' and CommandLine like '%{marker}%'\") {{ exit 0 }} else {{ exit 1 }}"
+    );
+    std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .stdout(std::process::Stdio::null())
         .status()
         .map(|s| s.success())
