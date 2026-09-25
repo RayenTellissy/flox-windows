@@ -10,6 +10,12 @@
 //! - [`PlayerView`] runs one playback: it builds the [`Controller`] over [`MpvEngine`], feeds it
 //!   keys, pointer events, mpv events and a 250 ms tick, carries out its effects through
 //!   [`Exec`], and writes [`PlayerState`] and the overlay focus.
+//! - The VidLink path: [`Effect::Sniff`] runs the sniffer in Playback mode under
+//!   [`sniff_with_watchdog`] (45 s), and [`SniffSlot`] cancels it when a newer source starts, the
+//!   controller stops waiting for it, or the player closes. A sniffed manifest plays in mpv; when
+//!   native playback fails the controller shows the page player over the player area (the Slint
+//!   overlay and hint are hidden while it is up, keys become page actions) and the page view is
+//!   refitted whenever the window size changes. `FLOX_FORCE_PAGE=1` skips native playback.
 //!
 //! Without libmpv every load fails, the controller ends in PLAYBACK FAILED and the hint says
 //! LIBMPV NOT FOUND. The child-HWND compositing fallback (plan section 2) would replace only
@@ -35,7 +41,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::controller::{
     Button, Controller, Effect, Engine, Input, Key, Meta, Phase, PlayerConfig, Prints, SystemClock,
-    ViewState,
+    ViewState, WATCHDOG_MS,
 };
 use super::mpv_engine::{create_mpv, EventMapper, MpvEngine, Streams, TdAccess};
 use super::web::PageSurface;
@@ -57,6 +63,102 @@ pub const REFRESH: Duration = Duration::from_millis(250);
 const SUBTITLE_TIMEOUT: Duration = Duration::from_secs(60);
 /// The player starts anyway when the underlay has not rendered a frame by then.
 const UNDERLAY_GRACE: Duration = Duration::from_secs(1);
+/// The debug switch that skips native playback and opens VidLink titles in the page player.
+pub const FORCE_PAGE_ENV: &str = "FLOX_FORCE_PAGE";
+
+/// Whether a `FLOX_FORCE_PAGE` value turns the switch on (`1`, `true`, `yes` or `on`).
+pub fn force_page(value: Option<&str>) -> bool {
+    value.is_some_and(|v| {
+        let v = v.trim();
+        v == "1"
+            || v.eq_ignore_ascii_case("true")
+            || v.eq_ignore_ascii_case("yes")
+            || v.eq_ignore_ascii_case("on")
+    })
+}
+
+/// Sniffs `page_url` in Playback mode, giving up after `limit` or when `cancel` fires. On a
+/// timeout the token is cancelled so the sniffer releases its WebView. Without a tokio runtime
+/// (inline execution in tests and fixtures) the sniffer's own timeout is the only limit.
+pub async fn sniff_with_watchdog(
+    sniffer: Arc<dyn Sniffer>,
+    page_url: String,
+    cancel: CancellationToken,
+    limit: Duration,
+) -> anyhow::Result<SniffResult> {
+    let run = sniffer.sniff(&page_url, SniffMode::Playback, cancel.clone());
+    if tokio::runtime::Handle::try_current().is_err() {
+        return Ok(run.await?);
+    }
+    tokio::select! {
+        result = run => Ok(result?),
+        () = cancel.cancelled() => Err(anyhow::anyhow!("sniff cancelled")),
+        () = tokio::time::sleep(limit) => {
+            cancel.cancel();
+            Err(anyhow::anyhow!("no stream within {} s", limit.as_secs()))
+        }
+    }
+}
+
+/// The sniff in flight, if any, and the sequence number it answers.
+#[derive(Debug, Default)]
+pub struct SniffSlot {
+    current: Option<(u64, CancellationToken)>,
+}
+
+impl SniffSlot {
+    /// Starts tracking a sniff for `seq`, cancelling the previous one.
+    pub fn begin(&mut self, seq: u64) -> CancellationToken {
+        self.cancel();
+        let token = CancellationToken::new();
+        self.current = Some((seq, token.clone()));
+        token
+    }
+
+    /// Cancels the sniff unless it answers `seq` and the controller still waits for a source.
+    pub fn settle(&mut self, seq: u64, waiting: bool) {
+        if self
+            .current
+            .as_ref()
+            .is_some_and(|(s, _)| *s != seq || !waiting)
+        {
+            self.cancel();
+        }
+    }
+
+    /// The sniff for `seq` answered.
+    pub fn finish(&mut self, seq: u64) {
+        if self.current.as_ref().is_some_and(|(s, _)| *s == seq) {
+            self.current = None;
+        }
+    }
+
+    pub fn cancel(&mut self) {
+        if let Some((_, token)) = self.current.take() {
+            token.cancel();
+        }
+    }
+
+    /// The sequence number of the sniff in flight.
+    pub fn active(&self) -> Option<u64> {
+        self.current.as_ref().map(|(seq, _)| *seq)
+    }
+}
+
+/// Notices window size changes between ticks (the page view is refitted on each).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SizeWatch {
+    last: Option<(u32, u32)>,
+}
+
+impl SizeWatch {
+    /// Records `size`; true when it differs from the previous one (not on the first call).
+    pub fn update(&mut self, size: (u32, u32)) -> bool {
+        let changed = self.last.is_some_and(|last| last != size);
+        self.last = Some(size);
+        changed
+    }
+}
 
 /// The row buttons in slot order (their `PlayerZones.buttons` indices).
 const SLOTS: [Button; 9] = [
@@ -350,6 +452,7 @@ pub fn apply(ui: &AppWindow, view: &ViewState, buffered: f64, mpv_missing: bool)
         }
     }
     s.set_hint(hint_text(view, mpv_missing).into());
+    s.set_page(view.phase == Phase::Page);
 }
 
 /// Clears the screen state (a player is opening or has closed).
@@ -357,6 +460,7 @@ pub fn reset(ui: &AppWindow, stamp: &str) {
     let s = ui.global::<PlayerState>();
     s.set_stamp(stamp.into());
     s.set_overlay(false);
+    s.set_page(false);
     s.set_asking(false);
     s.set_tracks_open(false);
     s.set_hint(SharedString::new());
@@ -612,7 +716,8 @@ pub struct PlayerView {
     started: Cell<bool>,
     closed: Cell<bool>,
     timer: slint::Timer,
-    sniff_cancel: RefCell<Option<CancellationToken>>,
+    sniff: RefCell<SniffSlot>,
+    window_size: Cell<SizeWatch>,
     keep_awake: RefCell<Option<KeepAwake>>,
     media: RefCell<Option<MediaControls>>,
     media_state: RefCell<Option<(bool, String)>>,
@@ -649,7 +754,8 @@ impl PlayerView {
             started: Cell::new(false),
             closed: Cell::new(false),
             timer: slint::Timer::default(),
-            sniff_cancel: RefCell::new(None),
+            sniff: RefCell::new(SniffSlot::default()),
+            window_size: Cell::new(SizeWatch::default()),
             keep_awake: RefCell::new(Some(KeepAwake::display())),
             media: RefCell::new(None),
             media_state: RefCell::new(None),
@@ -774,8 +880,12 @@ impl PlayerView {
             settings,
             ui_language: ui_language(),
         };
-        *self.controller.borrow_mut() =
-            Some(Controller::new(config, engine, SystemClock::new(), prints));
+        let mut controller = Controller::new(config, engine, SystemClock::new(), prints);
+        if force_page(std::env::var(FORCE_PAGE_ENV).ok().as_deref()) {
+            tracing::info!("{FORCE_PAGE_ENV} is set: skipping native playback");
+            controller.force_page();
+        }
+        *self.controller.borrow_mut() = Some(controller);
         *self.mpv.borrow_mut() = mpv.clone();
 
         match (mpv, &self.deps.underlay) {
@@ -855,6 +965,7 @@ impl PlayerView {
         };
         self.run_effects(effects);
         self.drain_engine();
+        self.settle_sniff();
         self.render();
     }
 
@@ -870,6 +981,37 @@ impl PlayerView {
         };
         self.run_effects(effects);
         self.drain_engine();
+        self.settle_sniff();
+    }
+
+    /// Cancels a sniff the controller no longer waits for (a newer source started, or it
+    /// moved on to playback, the page player or the failed state).
+    fn settle_sniff(&self) {
+        let state = self
+            .controller
+            .borrow()
+            .as_ref()
+            .map(|c| (c.seq(), c.phase() == Phase::Loading));
+        match state {
+            Some((seq, waiting)) => self.sniff.borrow_mut().settle(seq, waiting),
+            None => self.sniff.borrow_mut().cancel(),
+        }
+    }
+
+    /// Refits the page view when the window size changed since the last tick.
+    fn watch_window_size(&self) {
+        let Some(ui) = self.ui.upgrade() else {
+            return;
+        };
+        let size = ui.window().size();
+        let mut watch = self.window_size.get();
+        let changed = watch.update((size.width, size.height));
+        self.window_size.set(watch);
+        if changed {
+            if let Some(c) = self.controller.borrow_mut().as_mut() {
+                c.engine_mut().page_resize();
+            }
+        }
     }
 
     /// Inputs the engine queued (the page surface).
@@ -902,6 +1044,7 @@ impl PlayerView {
     }
 
     fn tick(self: &Rc<Self>) {
+        self.watch_window_size();
         self.feed(Input::Tick);
         self.render();
     }
@@ -972,22 +1115,22 @@ impl PlayerView {
             self.feed(Input::Sniffed { seq, result });
             return;
         }
-        let cancel = CancellationToken::new();
-        if let Some(previous) = self.sniff_cancel.replace(Some(cancel.clone())) {
-            previous.cancel();
-        }
+        let cancel = self.sniff.borrow_mut().begin(seq);
         let sniffer = self.deps.sniffer.clone();
+        let limit = Duration::from_millis(WATCHDOG_MS);
         let weak = Rc::downgrade(self);
         self.exec.run(
-            async move { sniffer.sniff(&page_url, SniffMode::Playback, cancel).await },
+            sniff_with_watchdog(sniffer, page_url, cancel, limit),
             move |result| {
                 let Some(view) = weak.upgrade() else {
                     return;
                 };
+                view.sniff.borrow_mut().finish(seq);
                 match result {
                     Ok(result) => view.feed(Input::Sniffed { seq, result }),
+                    // a cancelled sniff answers a stale seq (or a closed player): ignored
                     Err(e) => {
-                        tracing::warn!("sniff: {e}");
+                        tracing::warn!("sniff: {e:#}");
                         view.feed(Input::SniffFailed { seq });
                     }
                 }
@@ -1196,9 +1339,7 @@ impl PlayerView {
             return;
         }
         self.timer.stop();
-        if let Some(cancel) = self.sniff_cancel.borrow_mut().take() {
-            cancel.cancel();
-        }
+        self.sniff.borrow_mut().cancel();
         let controller = self.controller.borrow_mut().take();
         if let Some(mut controller) = controller {
             controller.engine_mut().stop();
@@ -1482,6 +1623,187 @@ mod tests {
         v.phase = Phase::Failed;
         assert_eq!(hint_text(&v, true), "LIBMPV NOT FOUND");
         assert_eq!(hint_text(&v, false), "+10 S");
+    }
+
+    #[test]
+    fn force_page_switch() {
+        assert!(force_page(Some("1")));
+        assert!(force_page(Some(" true ")));
+        assert!(force_page(Some("ON")));
+        assert!(!force_page(Some("0")));
+        assert!(!force_page(Some("")));
+        assert!(!force_page(None));
+    }
+
+    #[test]
+    fn sniff_slot_cancels_stale_and_abandoned_sniffs() {
+        let mut slot = SniffSlot::default();
+        let first = slot.begin(1);
+        slot.settle(1, true);
+        assert!(!first.is_cancelled(), "still wanted");
+        let second = slot.begin(2);
+        assert!(first.is_cancelled(), "a newer seq cancels the older sniff");
+        assert_eq!(slot.active(), Some(2));
+        slot.settle(3, true);
+        assert!(
+            second.is_cancelled(),
+            "the controller moved to a newer source"
+        );
+        assert_eq!(slot.active(), None);
+        let third = slot.begin(4);
+        slot.settle(4, false);
+        assert!(
+            third.is_cancelled(),
+            "the controller stopped waiting (failed, page)"
+        );
+        let fourth = slot.begin(5);
+        slot.finish(4);
+        assert_eq!(slot.active(), Some(5), "an older answer does not clear it");
+        slot.finish(5);
+        assert_eq!(slot.active(), None);
+        slot.settle(6, false);
+        assert!(!fourth.is_cancelled(), "a finished sniff is left alone");
+        let fifth = slot.begin(7);
+        slot.cancel();
+        assert!(fifth.is_cancelled(), "closing the player cancels it");
+    }
+
+    #[test]
+    fn size_watch_reports_changes_after_the_first_size() {
+        let mut w = SizeWatch::default();
+        assert!(!w.update((1280, 720)));
+        assert!(!w.update((1280, 720)));
+        assert!(w.update((1920, 1080)));
+        assert!(!w.update((1920, 1080)));
+    }
+
+    /// A sniffer that answers, fails, or waits until it is cancelled.
+    struct FakeSniffer {
+        answer: Option<bool>,
+        seen: std::sync::Mutex<Vec<(String, SniffMode)>>,
+    }
+
+    impl FakeSniffer {
+        fn new(answer: Option<bool>) -> Arc<FakeSniffer> {
+            Arc::new(FakeSniffer {
+                answer,
+                seen: std::sync::Mutex::new(Vec::new()),
+            })
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl Sniffer for FakeSniffer {
+        async fn sniff(
+            &self,
+            page_url: &str,
+            mode: SniffMode,
+            cancel: CancellationToken,
+        ) -> flox_core::error::Result<SniffResult> {
+            self.seen.lock().unwrap().push((page_url.to_owned(), mode));
+            match self.answer {
+                Some(true) => Ok(SniffResult {
+                    url: "https://cdn/master.m3u8".to_owned(),
+                    kind: StreamKind::Hls,
+                    headers: Vec::new(),
+                    captions: Vec::new(),
+                }),
+                Some(false) => Err(flox_core::error::Error::Unavailable("no".to_owned())),
+                None => {
+                    cancel.cancelled().await;
+                    Err(flox_core::error::Error::Unavailable("cancelled".to_owned()))
+                }
+            }
+        }
+    }
+
+    const PAGE: &str = "https://vidlink.pro/movie/550";
+
+    #[tokio::test]
+    async fn sniff_runs_in_playback_mode_and_returns_the_manifest() {
+        let fake = FakeSniffer::new(Some(true));
+        let sniffer: Arc<dyn Sniffer> = fake.clone();
+        let r = sniff_with_watchdog(
+            sniffer,
+            PAGE.to_owned(),
+            CancellationToken::new(),
+            Duration::from_secs(45),
+        )
+        .await
+        .unwrap();
+        assert_eq!(r.url, "https://cdn/master.m3u8");
+        assert_eq!(
+            fake.seen.lock().unwrap().as_slice(),
+            [(PAGE.to_owned(), SniffMode::Playback)]
+        );
+        let failing: Arc<dyn Sniffer> = FakeSniffer::new(Some(false));
+        let r = sniff_with_watchdog(
+            failing,
+            PAGE.to_owned(),
+            CancellationToken::new(),
+            Duration::from_secs(45),
+        )
+        .await;
+        assert!(r.is_err());
+    }
+
+    #[tokio::test]
+    async fn the_sniff_watchdog_gives_up_and_cancels_the_sniffer() {
+        let sniffer: Arc<dyn Sniffer> = FakeSniffer::new(None);
+        let cancel = CancellationToken::new();
+        let r = sniff_with_watchdog(
+            sniffer,
+            PAGE.to_owned(),
+            cancel.clone(),
+            Duration::from_millis(30),
+        )
+        .await;
+        assert!(r.unwrap_err().to_string().contains("no stream within"));
+        assert!(cancel.is_cancelled(), "the WebView is released");
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_sniff_ends_at_once() {
+        let sniffer: Arc<dyn Sniffer> = FakeSniffer::new(None);
+        let cancel = CancellationToken::new();
+        let task = tokio::spawn(sniff_with_watchdog(
+            sniffer,
+            PAGE.to_owned(),
+            cancel.clone(),
+            Duration::from_secs(45),
+        ));
+        cancel.cancel();
+        let r = tokio::time::timeout(Duration::from_secs(5), task)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn without_a_runtime_the_sniff_still_answers() {
+        let sniffer: Arc<dyn Sniffer> = FakeSniffer::new(Some(true));
+        let r = futures::executor::block_on(sniff_with_watchdog(
+            sniffer,
+            PAGE.to_owned(),
+            CancellationToken::new(),
+            Duration::from_secs(45),
+        ));
+        assert!(r.is_ok());
+    }
+
+    /// The macOS build: the platform sniffer fails (the player shows PLAYBACK FAILED) instead
+    /// of panicking.
+    #[cfg(not(windows))]
+    #[test]
+    fn off_windows_the_platform_sniffer_fails_cleanly() {
+        let r = futures::executor::block_on(sniff_with_watchdog(
+            flox_web::platform_sniffer(flox_web::assets::ScriptOptions::default()),
+            PAGE.to_owned(),
+            CancellationToken::new(),
+            Duration::from_secs(45),
+        ));
+        assert!(r.is_err());
     }
 
     #[test]

@@ -1,12 +1,11 @@
 //! The page-player surface behind the engine's page hooks.
 //!
 //! On Windows it drives `flox_web::page::PagePlayer` (a visible child WebView2 over the player
-//! area) from a tokio task, opening it on the first load. Everywhere else, and on Windows when
-//! no window handle or runtime is available, a load fails at once with `PageFailed` so the
-//! controller moves on to the failed state instead of waiting for its watchdog.
-//!
-//! The sniffer-driven flow and the page fallback details (resizing with the window, nav mode
-//! polish, `FLOX_FORCE_PAGE`) are wired by piece P17c.
+//! area) from a tokio task, opening it on the first load and resizing it with the window.
+//! `FLOX_TICK` comes back as [`Input::Playback`] (progress and end detection), the page load as
+//! [`Input::PageReady`] or [`Input::PageFailed`]. Everywhere else, and on Windows when no window
+//! handle or runtime is available, a load fails at once with `PageFailed` so the controller
+//! moves on to the failed state instead of waiting for its watchdog.
 
 use flox_web::page::{Action, Direction as PageDirection, PageEvent};
 
@@ -117,6 +116,15 @@ impl PageSurface {
         }
     }
 
+    /// Fits the page view to the player area again (the window was resized). A no-op until
+    /// the first load opens the view, and without a page player.
+    pub fn resize(&mut self) {
+        #[cfg(windows)]
+        if let Some(host) = &self.host {
+            host.resize();
+        }
+    }
+
     /// Inputs produced since the last poll.
     pub fn poll(&mut self) -> Vec<Input> {
         #[cfg(windows)]
@@ -141,6 +149,7 @@ mod imp {
         Load(String, Rect),
         Action(Action),
         ClosePanel,
+        Resize(Rect),
         Unload,
     }
 
@@ -184,6 +193,11 @@ mod imp {
 
         pub(super) fn unload(&self) {
             self.send(Command::Unload);
+        }
+
+        pub(super) fn resize(&self) {
+            let (w, h) = (self.size)();
+            self.send(Command::Resize(Rect::new(0, 0, w, h)));
         }
 
         pub(super) fn drain(&mut self, out: &mut Vec<Input>) {
@@ -242,6 +256,13 @@ mod imp {
                         None => false,
                     };
                     let _ = inputs.send(Input::PagePanelClosed(closed));
+                }
+                Command::Resize(rect) => {
+                    if let Some(p) = &player {
+                        if let Err(e) = p.resize(rect) {
+                            tracing::debug!("page player resize: {e}");
+                        }
+                    }
                 }
                 Command::Unload => {
                     if let Some(p) = &player {
@@ -305,6 +326,7 @@ mod tests {
         s.load("https://vidlink.pro/movie/1");
         s.action(PageAction::ClosePanel);
         s.action(PageAction::Space);
+        s.resize();
         s.close();
         assert_eq!(
             s.poll(),

@@ -512,6 +512,7 @@ pub struct Controller<E: Engine, C: Clock, P: Prints> {
     failed: bool,
     retried: bool,
     native_allowed: bool,
+    forced_page: bool,
     native_shown: bool,
     native_active: bool,
     page_active: bool,
@@ -567,6 +568,7 @@ impl<E: Engine, C: Clock, P: Prints> Controller<E, C, P> {
             failed: false,
             retried: false,
             native_allowed: true,
+            forced_page: false,
             native_shown: false,
             native_active: false,
             page_active: false,
@@ -621,6 +623,20 @@ impl<E: Engine, C: Clock, P: Prints> Controller<E, C, P> {
     /// The saved position the next load starts from.
     pub fn start_at(&self) -> u32 {
         self.start_at
+    }
+
+    /// The sequence number of the current source; async answers carrying an older one are
+    /// ignored, so work started for them can be cancelled.
+    pub fn seq(&self) -> u64 {
+        self.seq
+    }
+
+    /// Skips native playback for this session: VidLink titles open straight in the page player
+    /// (the `FLOX_FORCE_PAGE` debug switch), library prints included. Call before
+    /// [`Controller::start`].
+    pub fn force_page(&mut self) {
+        self.native_allowed = false;
+        self.forced_page = true;
     }
 
     /// Applies the resume mode: ALWAYS resumes, NEVER starts over, ASK shows the dialog.
@@ -829,7 +845,7 @@ impl<E: Engine, C: Clock, P: Prints> Controller<E, C, P> {
         self.refresh_next();
         self.watchdog_at = None;
         self.seq += 1;
-        let entry = if self.library_failed || !self.prints.ready() {
+        let entry = if self.library_failed || self.forced_page || !self.prints.ready() {
             None
         } else {
             self.default_print()
@@ -2832,6 +2848,184 @@ mod tests {
         r.c.handle(Input::PageFailed);
         assert_eq!(r.c.phase(), Phase::Failed);
         assert_eq!(r.calls().last(), Some(&Call::PageClose));
+    }
+
+    // ---- VidLink page path (sniff, fallback, forced page) ----
+
+    #[test]
+    fn sniffed_hls_loads_with_vidlink_headers_and_preferred_captions_first() {
+        let settings = Settings {
+            subtitle_language: Some("fr".to_owned()),
+            ..Settings::default()
+        };
+        let mut r = rig_with(tv_meta(2), 0, settings);
+        let fx = r.c.start();
+        let seq = Rig::seq(&fx).unwrap_or(0);
+        assert!(fx.iter().any(|e| matches!(
+            e,
+            Effect::Sniff { page_url, .. } if page_url.starts_with("https://vidlink.pro/tv/1399/1/2")
+        )));
+        let cap = |l: &str| Caption {
+            url: format!("https://c/{l}.vtt"),
+            language: l.to_owned(),
+            kind: "vtt".to_owned(),
+        };
+        r.c.handle(Input::Sniffed {
+            seq,
+            result: SniffResult {
+                url: "https://cdn/master.m3u8".to_owned(),
+                kind: StreamKind::Hls,
+                headers: vec![
+                    ("Cookie".to_owned(), "c".to_owned()),
+                    ("User-Agent".to_owned(), "page".to_owned()),
+                    ("X-Token".to_owned(), "t".to_owned()),
+                ],
+                captions: vec![cap("English"), cap("French")],
+            },
+        });
+        let Some(Call::LoadUrl(url, headers, captions, start)) = r.calls().get(1) else {
+            panic!("expected load_url, got {:?}", r.calls());
+        };
+        assert_eq!(url, "https://cdn/master.m3u8");
+        assert_eq!(*start, 0);
+        assert_eq!(
+            headers,
+            &vec![
+                ("Referer".to_owned(), "https://vidlink.pro/".to_owned()),
+                ("Origin".to_owned(), "https://vidlink.pro".to_owned()),
+                ("X-Token".to_owned(), "t".to_owned()),
+            ]
+        );
+        assert_eq!(captions, &vec!["French".to_owned(), "English".to_owned()]);
+        r.c.handle(Input::FileLoaded { duration: 2400.0 });
+        r.c.handle(Input::FirstFrame);
+        assert_eq!(r.c.phase(), Phase::Native);
+    }
+
+    #[test]
+    fn a_newer_source_invalidates_the_sniff_in_flight() {
+        let mut r = rig(movie_meta(), 0);
+        let fx = r.c.start();
+        let first = Rig::seq(&fx).unwrap_or(0);
+        assert_eq!(r.c.seq(), first);
+        let fx = r.key(Key::Reload);
+        let second = Rig::seq(&fx).unwrap_or(0);
+        assert!(second > first);
+        assert_eq!(r.c.seq(), second);
+        r.clear();
+        r.sniff_ok(first);
+        assert!(r.calls().is_empty(), "the old answer is dropped");
+        r.sniff_ok(second);
+        assert!(matches!(r.calls().first(), Some(Call::LoadUrl(..))));
+    }
+
+    #[test]
+    fn a_sniff_that_never_answers_trips_the_watchdog() {
+        let mut r = rig(movie_meta(), 0);
+        let fx = r.c.start();
+        let first = Rig::seq(&fx).unwrap_or(0);
+        let fx = r.tick(WATCHDOG_MS);
+        let second = Rig::seq(&fx).unwrap_or(0);
+        assert!(second > first, "one automatic reload sniffs again");
+        // the late answer for the first sniff is ignored, the second one times out too
+        r.sniff_ok(first);
+        r.tick(WATCHDOG_MS);
+        assert_eq!(r.c.phase(), Phase::Failed);
+        assert_eq!(r.c.view().phase, Phase::Failed);
+    }
+
+    #[test]
+    fn native_failure_falls_back_to_the_page_and_its_ticks_drive_progress_and_the_end() {
+        let mut r = rig(movie_meta(), 0);
+        r.native_url();
+        r.c.handle(Input::EngineError("http 403".to_owned()));
+        assert_eq!(r.c.phase(), Phase::Page);
+        assert!(!r.c.view().overlay_visible, "the flox overlay stays hidden");
+        r.c.handle(Input::PageReady);
+        assert!(r.calls().contains(&Call::Page(PageAction::ApplyStart(100))));
+        let tick = |time: f64, ended: bool| {
+            Input::Playback(Playback {
+                time,
+                duration: 3000.0,
+                paused: false,
+                ended,
+            })
+        };
+        r.c.handle(tick(120.0, false));
+        let fx = r.tick(PROGRESS_TICK_MS);
+        assert!(fx
+            .iter()
+            .any(|e| matches!(e, Effect::SaveProgress(p) if p.watched == 120)));
+        let fx = r.c.handle(tick(3000.0, true));
+        assert!(fx.iter().any(|e| matches!(e, Effect::SaveProgress(_))));
+        assert_eq!(fx.last(), Some(&Effect::Exit));
+        assert_eq!(r.calls().last(), Some(&Call::PageClose));
+    }
+
+    #[test]
+    fn page_keys_from_the_keyboard() {
+        let mut r = page_rig();
+        r.key(Key::PlayPause);
+        r.key(Key::Right);
+        r.key(Key::Rewind);
+        r.key(Key::Up);
+        assert!(r.c.view().nav_mode, "UP enters navigation mode");
+        r.key(Key::Left);
+        r.key(Key::PlayPause);
+        assert_eq!(
+            r.calls(),
+            [
+                Call::Page(PageAction::Space),
+                Call::Page(PageAction::ArrowRight),
+                Call::Page(PageAction::Seek(-30)),
+                Call::Page(PageAction::EnterNav),
+                Call::Page(PageAction::Nav(Direction::Left)),
+                Call::Page(PageAction::Space),
+            ]
+        );
+        // Ctrl+R reloads the page player (navigation mode ends first)
+        r.clear();
+        r.key(Key::Reload);
+        assert_eq!(r.calls()[0], Call::Page(PageAction::ExitNav));
+        assert!(matches!(r.calls().last(), Some(Call::PageLoad(_))));
+        assert_eq!(r.c.phase(), Phase::Page);
+    }
+
+    #[test]
+    fn forced_page_skips_the_sniff_and_the_library() {
+        let mut r = rig(tv_meta(1), 30);
+        r.prints.ready.set(true);
+        r.prints
+            .entries
+            .borrow_mut()
+            .push(print(EpisodeKey::episode(1399, 1, 1), "1080p", "HEVC"));
+        r.c.force_page();
+        let fx = r.c.start();
+        assert!(!fx
+            .iter()
+            .any(|e| matches!(e, Effect::Sniff { .. } | Effect::PrepareLibrary { .. })));
+        assert_eq!(
+            r.calls(),
+            [
+                Call::Stop,
+                Call::PageLoad(
+                    "https://vidlink.pro/tv/1399/1/1?autoplay=true&primaryColor=fafafa&nextbutton=false&startAt=30"
+                        .to_owned()
+                )
+            ]
+        );
+        assert_eq!(r.c.phase(), Phase::Page);
+        // autoplay moves to the next episode, which stays on the page too
+        r.c.handle(Input::EpisodeCount(8));
+        r.clear();
+        let fx = r.end();
+        assert!(!fx
+            .iter()
+            .any(|e| matches!(e, Effect::Sniff { .. } | Effect::PrepareLibrary { .. })));
+        assert!(matches!(
+            r.calls().last(),
+            Some(Call::PageLoad(url)) if url.starts_with("https://vidlink.pro/tv/1399/1/2")
+        ));
     }
 
     #[test]

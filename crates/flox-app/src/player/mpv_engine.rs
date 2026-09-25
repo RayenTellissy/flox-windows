@@ -466,6 +466,11 @@ impl<M: MpvControl> MpvEngine<M> {
         self.page.poll()
     }
 
+    /// Fits the page player to the window again (call when the window size changes).
+    pub fn page_resize(&mut self) {
+        self.page.resize();
+    }
+
     /// Runs the commands that waited for the file (call on mpv `file-loaded`).
     pub fn on_file_loaded(&mut self) {
         for args in std::mem::take(&mut self.after_load) {
@@ -945,6 +950,7 @@ mod tests {
         let (mut e, _, _) = engine(Settings::default());
         e.page_load("https://vidlink.pro/movie/1");
         e.page_action(PageAction::Space);
+        e.page_resize();
         e.page_close();
         assert_eq!(e.take_inputs(), vec![Input::PageFailed]);
         assert!(e.take_inputs().is_empty());

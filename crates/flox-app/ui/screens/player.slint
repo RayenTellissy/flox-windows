@@ -25,6 +25,9 @@ export global PlayerState {
     // A stamp in the middle: LOADING, PLAYBACK FAILED, or empty.
     in property <string> stamp;
     in property <bool> overlay;
+    // The page player (a WebView over the player area) is up with its own UI: the flox
+    // overlay and hint stay hidden.
+    in property <bool> page;
     in property <bool> asking;
     in property <string> resume-label;
     in property <string> eyebrow;
@@ -293,7 +296,7 @@ export component PlayerScreen inherits Rectangle {
         x: Tokens.screen-padding;
         y: parent.height - Tokens.screen-padding - self.preferred-height;
         width: parent.width - 2 * Tokens.screen-padding;
-        text: PlayerState.hint;
+        text: PlayerState.page ? "" : PlayerState.hint;
     }
 
     // The ASK dialog: a card over the dimmed screen that swallows the pointer behind it.
