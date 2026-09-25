@@ -113,7 +113,7 @@ pub(crate) async fn run(
     }
 
     check(cancel)?;
-    let probe = guard(cancel, probe::ffprobe(&q.deps.tools.ffprobe, &media)).await?;
+    let probe = guard(cancel, probe::ffprobe(&q.tools().ffprobe, &media)).await?;
     let quality = quality(probe.height, job);
     let part_size = q.options.part_size;
     let split_media = media.clone();
@@ -238,7 +238,7 @@ async fn pull_dash(
     q.set_state(job.id, JobState::Muxing, None);
     let codec = video_codec(q, &video, cancel).await?;
     let args = mux::dash_args_for(&video, audio.as_deref(), media, &codec);
-    process::run(&q.deps.tools.ffmpeg, &args, |_| {}, cancel.clone()).await?;
+    process::run(&q.tools().ffmpeg, &args, |_| {}, cancel.clone()).await?;
     let _ = tokio::fs::remove_file(&video).await;
     if let Some(a) = audio {
         let _ = tokio::fs::remove_file(&a).await;
@@ -251,7 +251,7 @@ async fn pull_dash(
 async fn video_codec(q: &Queue, file: &Path, cancel: &CancellationToken) -> Result<String> {
     let mut out = String::new();
     process::run(
-        &q.deps.tools.ffprobe,
+        &q.tools().ffprobe,
         &probe::probe_args(file),
         |line| {
             out.push_str(line);
@@ -273,7 +273,7 @@ async fn pull_hls(
 ) -> Result<()> {
     let args = with_download_user_agent(mux::hls_args(&info.url, &info.headers, media));
     process::run(
-        &q.deps.tools.ffmpeg,
+        &q.tools().ffmpeg,
         &args,
         |line| {
             if let Some(stats) = mux::parse_stats(line) {
@@ -397,10 +397,8 @@ async fn ytdlp(
     cancel: &CancellationToken,
 ) -> Result<()> {
     let tool = q
-        .deps
-        .tools
+        .tools()
         .ytdlp
-        .clone()
         .ok_or_else(|| Error::Tool("yt-dlp not installed".into()))?;
     let args: Vec<OsString> = vec![
         "-f".into(),
@@ -408,7 +406,7 @@ async fn ytdlp(
         "--merge-output-format".into(),
         "mkv".into(),
         "--ffmpeg-location".into(),
-        q.deps.tools.ffmpeg.clone().into(),
+        q.tools().ffmpeg.into(),
         "-o".into(),
         out.into(),
         url.as_str().into(),

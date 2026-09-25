@@ -974,6 +974,11 @@ impl Shell {
 
     // -- player -------------------------------------------------------------
 
+    /// Where the shell runs its loads (for watchers the app installs next to it).
+    pub fn exec(&self) -> &Exec {
+        &self.exec
+    }
+
     /// What the player uses beyond the services (mpv, Telegram, the underlay).
     pub fn set_player_deps(&self, deps: PlayerDeps) {
         *self.player_deps.borrow_mut() = Some(Rc::new(deps));

@@ -5,13 +5,16 @@
 //! - [`start_telegram`] loads tdjson and starts the one [`TdClient`] when the API id
 //!   and hash are set; [`start_queue`] builds the upload queue over it once ffmpeg and
 //!   ffprobe resolve.
-//! - [`Integration`] is the Settings seam ([`Shell::set_telegram_restart`]). When the Telegram credentials change it closes the running
+//! - [`Integration`] is the Settings seam ([`Shell::set_telegram_restart`]) and a
+//!   Settings watcher. When the Telegram credentials change it closes the running
 //!   TDLib instance, waits for `authorizationStateClosed` and starts a new one with
 //!   the new parameters behind the same [`TdClient`] ([`TdClient::restart_with`]), so
 //!   the auth watcher, the library, the player's `flox://` streams and the queue's
 //!   uploader all follow it; `td_receive` allows one client per process, so a second
 //!   client is never created. When Telegram was off at launch (no credentials, or
-//!   tdjson missing) it starts the stack and hands it to the shell.
+//!   tdjson missing) it starts the stack and hands it to the shell. When the ffmpeg or
+//!   yt-dlp path changes it resolves the tools again and gives them to the queue, or
+//!   builds the queue if ffmpeg was missing until then.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -195,6 +198,11 @@ pub fn credentials_step(
     }
 }
 
+/// True when the ffmpeg or yt-dlp override changed.
+pub fn tool_paths_changed(previous: &Settings, next: &Settings) -> bool {
+    previous.ffmpeg_path != next.ffmpeg_path || previous.ytdlp_path != next.ytdlp_path
+}
+
 /// The running stack [`Integration`] keeps.
 #[derive(Default)]
 struct Running {
@@ -203,6 +211,8 @@ struct Running {
     connected: Option<Telegram>,
     library: Option<Arc<Library>>,
     queue: Option<Arc<Queue>>,
+    /// The settings last seen by the watcher.
+    settings: Option<Settings>,
 }
 
 /// Keeps the Telegram stack and the queue in step with Settings (see the module docs).
@@ -231,7 +241,7 @@ impl Integration {
         Rc::new(Self {
             runtime,
             paths,
-            settings,
+            settings: settings.clone(),
             services,
             shell: Rc::downgrade(shell),
             running: RefCell::new(Running {
@@ -239,16 +249,23 @@ impl Integration {
                 connected,
                 library: stack.library,
                 queue,
+                settings: Some(settings.get()),
             }),
         })
     }
 
-    /// Installs the credentials hook on `shell`.
+    /// Installs the credentials hook and the tool-path watcher on `shell`.
     pub fn install(self: &Rc<Self>, shell: &Rc<Shell>) {
         let me = Rc::downgrade(self);
         shell.set_telegram_restart(move |s| {
             if let Some(me) = me.upgrade() {
                 me.credentials_changed(s);
+            }
+        });
+        let me = Rc::downgrade(self);
+        shell.exec().watch(self.settings.subscribe(), move |s| {
+            if let Some(me) = me.upgrade() {
+                me.settings_changed(s);
             }
         });
     }
@@ -331,6 +348,51 @@ impl Integration {
         );
         shell.telegram_replaced();
     }
+
+    /// Any saved change: re-resolve the tools when their paths changed.
+    fn settings_changed(&self, next: Settings) {
+        let previous = self.running.borrow_mut().settings.replace(next.clone());
+        let Some(previous) = previous else {
+            return;
+        };
+        if tool_paths_changed(&previous, &next) {
+            self.tools_changed(&next);
+        }
+    }
+
+    fn tools_changed(&self, settings: &Settings) {
+        let (queue, client, library) = {
+            let running = self.running.borrow();
+            (
+                running.queue.clone(),
+                running.client.clone(),
+                running.library.clone(),
+            )
+        };
+        match queue {
+            Some(queue) => match resolve_tool_paths(settings) {
+                Some(tools) => {
+                    tracing::info!("tools resolved again: {}", tools.ffmpeg.display());
+                    queue.set_tools(tools);
+                }
+                None => tracing::warn!("ffmpeg or ffprobe not found; the queue keeps its tools"),
+            },
+            None => {
+                let (Some(client), Some(shell)) = (client, self.shell.upgrade()) else {
+                    return;
+                };
+                let Some(queue) = start_queue(&self.runtime, &self.paths, &self.settings, &client)
+                else {
+                    return;
+                };
+                self.running.borrow_mut().queue = Some(queue.clone());
+                shell.connect_ingest(
+                    Some(queue as Arc<dyn JobQueue>),
+                    library.map(|l| l as Arc<dyn LibraryAdmin>),
+                );
+            }
+        }
+    }
 }
 
 /// True when `root` is a folder Flox owns under the system temp folder, safe to empty:
@@ -389,6 +451,21 @@ mod tests {
         assert_eq!(credentials_step(true, None), CredentialsStep::Close);
         assert_eq!(credentials_step(false, creds), CredentialsStep::Start);
         assert_eq!(credentials_step(false, None), CredentialsStep::Off);
+    }
+
+    #[test]
+    fn tool_path_changes() {
+        let a = Settings::default();
+        let mut b = a.clone();
+        assert!(!tool_paths_changed(&a, &b));
+        b.ffmpeg_path = Some(PathBuf::from("/opt/ffmpeg/bin/ffmpeg"));
+        assert!(tool_paths_changed(&a, &b));
+        let mut c = a.clone();
+        c.ytdlp_path = Some(PathBuf::from("/opt/yt-dlp"));
+        assert!(tool_paths_changed(&a, &c));
+        let mut d = a.clone();
+        d.telegram_channel = "Other".to_owned();
+        assert!(!tool_paths_changed(&a, &d));
     }
 
     #[test]

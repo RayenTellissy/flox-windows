@@ -86,6 +86,8 @@ pub struct Queue {
     me: Weak<Queue>,
     /// `(channel title, chat id)` of the last lookup.
     channel: Mutex<Option<(String, i64)>>,
+    /// The tools jobs run with: `deps.tools` until [`Queue::set_tools`] replaces them.
+    tools: Mutex<ToolPaths>,
 }
 
 impl Queue {
@@ -100,6 +102,7 @@ impl Queue {
     /// [`Queue::new`] with explicit options.
     pub fn with_options(deps: QueueDeps, options: QueueOptions) -> Arc<Queue> {
         let (views, _rx) = watch::channel(Vec::new());
+        let tools = Mutex::new(deps.tools.clone());
         Arc::new_cyclic(|me| Queue {
             deps,
             options,
@@ -110,6 +113,7 @@ impl Queue {
             runtime: Handle::try_current().ok(),
             me: me.clone(),
             channel: Mutex::new(None),
+            tools,
         })
     }
 
@@ -223,6 +227,17 @@ impl Queue {
     /// Sets a job's progress.
     pub(crate) fn set_progress(&self, id: Uuid, progress: f32) {
         self.update(id, |v| v.progress = Some(progress.clamp(0.0, 1.0)));
+    }
+
+    /// Replaces ffmpeg, ffprobe and yt-dlp (their paths changed in Settings). Each
+    /// step of a job reads the tools when it starts, so the next step uses these.
+    pub fn set_tools(&self, tools: ToolPaths) {
+        *self.tools.lock() = tools;
+    }
+
+    /// The tools jobs run with now.
+    pub fn tools(&self) -> ToolPaths {
+        self.tools.lock().clone()
     }
 
     /// Forgets the cached library channel, so the next upload looks it up again (the
@@ -452,5 +467,33 @@ mod tests {
         queue.reset_channel();
         assert_eq!(queue.chat_id().await.unwrap(), 7);
         assert_eq!(td.lookups.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn tools_start_from_the_deps_and_can_be_replaced() {
+        let tools = |dir: &str| ToolPaths {
+            ffmpeg: PathBuf::from(dir).join("ffmpeg"),
+            ffprobe: PathBuf::from(dir).join("ffprobe"),
+            ytdlp: None,
+        };
+        let queue = Queue::new(QueueDeps {
+            td: Arc::new(OneChannel {
+                lookups: AtomicU32::new(0),
+                updates: broadcast::channel(4).0,
+            }),
+            sniffer: None,
+            tools: tools("/a"),
+            temp_root: PathBuf::from("/nonexistent/flox"),
+            settings: SettingsStore::new(
+                PathBuf::from("/nonexistent/settings.json"),
+                Settings::default(),
+            ),
+            hooks: Arc::new(NoHooks),
+        });
+        assert_eq!(queue.tools(), tools("/a"));
+        let mut next = tools("/b");
+        next.ytdlp = Some(PathBuf::from("/b/yt-dlp"));
+        queue.set_tools(next.clone());
+        assert_eq!(queue.tools(), next);
     }
 }
