@@ -1,7 +1,95 @@
-import { ScreenPlaceholder } from "placeholder.slint";
+// Search: the input on top, then a poster grid of (width - 96) / 176 columns with a
+// centred stamp (LOADING, NO RESULTS, REQUEST FAILED). Debounce and results come
+// from Rust (src/app.rs, src/vm/search.rs), which computes the same column count
+// from the window width for the focus grid (vm::search::columns).
+import { Tokens } from "../tokens.slint";
+import { FocusState, PosterCard, StateStamp, TextField } from "../components/all.slint";
+import { Card, Reveal } from "home.slint";
 
-export component SearchScreen inherits ScreenPlaceholder {
-    eyebrow: "SEARCH";
-    heading: "Search";
-    caption: "Movies and TV from TMDB.";
+// Mirrors the zone constants in src/vm/search.rs.
+export global SearchZones {
+    out property <int> input: 10;
+    out property <int> grid: 11;
+}
+
+export global SearchState {
+    in-out property <string> query;
+    in property <[Card]> results;
+    in property <string> state;
+    in-out property <length> scroll-y;
+
+    // Every edit of the query, and Enter.
+    callback edited(text: string);
+    callback accepted(text: string);
+}
+
+export component SearchScreen inherits Rectangle {
+    property <int> cols: max(1, floor((root.width - 2 * Tokens.screen-padding) / (Tokens.poster-width + Tokens.space-md)));
+    property <length> pitch-x: Tokens.poster-width + Tokens.space-md;
+    property <length> card-height: probe.preferred-height;
+    property <length> pitch-y: root.card-height + Tokens.space-md;
+    property <int> row-count: ceil(SearchState.results.length / root.cols);
+    property <int> focused-index: FocusState.zone == SearchZones.grid ? FocusState.index : -1;
+
+    background: Tokens.canvas;
+
+    changed focused-index => {
+        if root.focused-index >= 0 {
+            flick.content-y = -Reveal.offset(-flick.content-y, flick.height, flick.content-height, floor(root.focused-index / root.cols) * root.pitch-y, root.card-height);
+        }
+    }
+
+    // Measures a card for the grid pitch; never shown.
+    probe := PosterCard {
+        visible: false;
+        title: "X";
+        meta: "X";
+    }
+
+    VerticalLayout {
+        padding: Tokens.screen-padding;
+        spacing: Tokens.space-lg;
+
+        TextField {
+            text <=> SearchState.query;
+            placeholder: "Title";
+            zone: SearchZones.input;
+            index: 0;
+            edited(text) => {
+                SearchState.edited(text);
+            }
+            accepted(text) => {
+                SearchState.accepted(text);
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+
+            flick := Flickable {
+                width: 100%;
+                height: 100%;
+                content-height: max(0px, root.row-count * root.pitch-y - Tokens.space-md);
+                content-y <=> SearchState.scroll-y;
+
+                for card[i] in SearchState.results: PosterCard {
+                    x: mod(i, root.cols) * root.pitch-x;
+                    y: floor(i / root.cols) * root.pitch-y;
+                    height: root.card-height;
+                    poster: card.poster;
+                    title: card.title;
+                    meta: card.meta;
+                    progress: card.progress;
+                    zone: SearchZones.grid;
+                    index: i;
+                }
+            }
+
+            if SearchState.state != "": StateStamp {
+                width: 100%;
+                height: 100%;
+                text: SearchState.state;
+            }
+        }
+    }
 }

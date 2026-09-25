@@ -1,18 +1,24 @@
-// Flox for Windows: root window and screen router.
+// Flox for Windows: the root window, the screen router, the key sink and the Home
+// top bar. Rust (src/app.rs) owns navigation and focus: it sets `screen`, fills the
+// screen globals and answers `key` and the FocusState callbacks.
 import "../../../assets/fonts/Geist-Regular.ttf";
 import "../../../assets/fonts/Geist-Medium.ttf";
 import "../../../assets/fonts/GeistMono-Regular.ttf";
 import "../../../assets/fonts/GeistMono-Medium.ttf";
 
 import { Tokens } from "tokens.slint";
-import { HomeScreen } from "screens/home.slint";
-import { SearchScreen } from "screens/search.slint";
-import { DetailsScreen } from "screens/details.slint";
+import { FocusRoot, TopBar } from "components/all.slint";
+import { HomeScreen, HomeState, HomeZones, Card } from "screens/home.slint";
+import { SearchScreen, SearchState, SearchZones } from "screens/search.slint";
+import { DetailsScreen, DetailsState, DetailsZones, Season, Episode } from "screens/details.slint";
 import { QueueScreen } from "screens/queue.slint";
 import { LibraryScreen } from "screens/library.slint";
 import { SettingsScreen } from "screens/settings.slint";
 import { LoginScreen } from "screens/login.slint";
 import { PlayerScreen } from "screens/player.slint";
+
+export { FocusState } from "components/focus.slint";
+export { HomeState, HomeZones, Card, SearchState, SearchZones, DetailsState, DetailsZones, Season, Episode }
 
 export enum Screen {
     home,
@@ -29,6 +35,9 @@ export component AppWindow inherits Window {
     in-out property <Screen> screen: Screen.home;
     in property <string> version: "1.0.0";
 
+    // Every key press, before the focused element sees it. True when Rust handled it.
+    callback key(text: string, control: bool, shift: bool, alt: bool, meta: bool, repeat: bool) -> bool;
+
     title: "Flox";
     min-width: 1280px;
     min-height: 720px;
@@ -38,36 +47,72 @@ export component AppWindow inherits Window {
     default-font-size: Tokens.body-size;
     background: root.screen == Screen.player ? Tokens.pure-black : Tokens.canvas;
 
-    if root.screen == Screen.home: HomeScreen {
+    FocusRoot {
         width: 100%;
         height: 100%;
-    }
-    if root.screen == Screen.search: SearchScreen {
-        width: 100%;
-        height: 100%;
-    }
-    if root.screen == Screen.details: DetailsScreen {
-        width: 100%;
-        height: 100%;
-    }
-    if root.screen == Screen.queue: QueueScreen {
-        width: 100%;
-        height: 100%;
-    }
-    if root.screen == Screen.library: LibraryScreen {
-        width: 100%;
-        height: 100%;
-    }
-    if root.screen == Screen.settings: SettingsScreen {
-        width: 100%;
-        height: 100%;
-    }
-    if root.screen == Screen.login: LoginScreen {
-        width: 100%;
-        height: 100%;
-    }
-    if root.screen == Screen.player: PlayerScreen {
-        width: 100%;
-        height: 100%;
+        key(text, control, shift, alt, meta, repeat) => {
+            root.key(text, control, shift, alt, meta, repeat)
+        }
+
+        if root.screen == Screen.home: HomeScreen {
+            x: 0;
+            y: Tokens.screen-padding + 48px + Tokens.space-xl;
+            width: 100%;
+            height: parent.height - self.y;
+        }
+
+        // Drawn after Home so rows scrolled up pass under it.
+        if root.screen == Screen.home: Rectangle {
+            x: 0;
+            y: 0;
+            width: 100%;
+            height: Tokens.screen-padding + 48px + Tokens.space-xl;
+            background: Tokens.canvas;
+
+            TopBar {
+                x: Tokens.screen-padding;
+                y: Tokens.screen-padding;
+                width: parent.width - 2 * Tokens.screen-padding;
+                height: 48px;
+                zone: HomeZones.top-bar;
+                items: [
+                    { label: "SEARCH", icon: @image-url("../../../assets/icons/ic_search.png") },
+                    { label: "QUEUE (" + HomeState.queue-count + ")" },
+                    { label: "LIBRARY" },
+                    { label: "SETTINGS" },
+                ];
+                status-label: "TELEGRAM";
+                status-ready: HomeState.telegram-ready;
+            }
+        }
+
+        if root.screen == Screen.search: SearchScreen {
+            width: 100%;
+            height: 100%;
+        }
+        if root.screen == Screen.details: DetailsScreen {
+            width: 100%;
+            height: 100%;
+        }
+        if root.screen == Screen.queue: QueueScreen {
+            width: 100%;
+            height: 100%;
+        }
+        if root.screen == Screen.library: LibraryScreen {
+            width: 100%;
+            height: 100%;
+        }
+        if root.screen == Screen.settings: SettingsScreen {
+            width: 100%;
+            height: 100%;
+        }
+        if root.screen == Screen.login: LoginScreen {
+            width: 100%;
+            height: 100%;
+        }
+        if root.screen == Screen.player: PlayerScreen {
+            width: 100%;
+            height: 100%;
+        }
     }
 }
