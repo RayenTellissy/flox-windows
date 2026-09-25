@@ -1,4 +1,4 @@
-//! The loudness boost audio filter (plan section 6).
+//! The loudness boost audio filter.
 //!
 //! Android's DynamicsProcessing input gain plus limiter (ratio 10, threshold
 //! -1 dB, attack 1 ms, release 60 ms) maps to lavfi `volume` + `acompressor`

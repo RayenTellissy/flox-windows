@@ -1,6 +1,6 @@
 //! The mpv OpenGL render context drawn under the Slint scene.
 //!
-//! Lifecycle (plan section 2): create in Slint's `RenderingSetup` with the
+//! Lifecycle: create in Slint's `RenderingSetup` with the
 //! window's `get_proc_address`, call [`GlRenderer::render`] in
 //! `BeforeRendering` and [`GlRenderer::report_swap`] in `AfterRendering`, and
 //! drop in `RenderingTeardown`. Dropping frees the render context before the

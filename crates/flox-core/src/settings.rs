@@ -1,8 +1,9 @@
 //! App settings, stored as `settings.json` with the Android key names.
 //!
 //! Serde names are the Android `SharedPreferences` keys and enum values are
-//! the Android enum names, so an Android-shaped file round-trips. Persistence,
-//! clamping and unknown-key preservation are filled in by piece P2.
+//! the Android enum names, so an Android-shaped file round-trips. Loading clamps
+//! every value to its allowed options, and saving copies keys this version does not
+//! know from the existing file, so a newer file survives an older build.
 
 use std::fs;
 use std::io::ErrorKind;

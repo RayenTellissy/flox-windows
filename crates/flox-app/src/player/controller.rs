@@ -175,7 +175,7 @@ pub enum Direction {
     Down,
 }
 
-/// Logical keys (section 1 of the plan maps the keyboard, mouse and SMTC onto these).
+/// Logical keys: the keyboard, the mouse and the media keys all map onto these.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Key {
     Center,

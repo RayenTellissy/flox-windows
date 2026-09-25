@@ -1,9 +1,10 @@
 //! The one error type shared by every Flox crate.
 
-/// Errors raised anywhere in Flox. Later pieces may add variants.
+/// Errors raised anywhere in Flox.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    /// A scaffold stub that a later piece fills in. Carries `crate::module::fn`.
+    /// An operation this build does not provide. Carries `crate::module::fn`; nothing in
+    /// the app raises it today, and it stays for callers that match on it.
     #[error("not implemented: {0}")]
     NotImplemented(&'static str),
     #[error("http: {0}")]

@@ -1,4 +1,4 @@
-//! mpv options derived from settings (plan section 6).
+//! mpv options derived from settings.
 
 use flox_core::settings::{AspectMode, Settings, SubtitleSize};
 

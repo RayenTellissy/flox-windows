@@ -1,5 +1,5 @@
-//! Renders the scaffold's AppWindow with the software renderer to
-//! `target/snapshots/scaffold.png` for review.
+//! Renders a bare AppWindow (no shell, default properties) with the software renderer
+//! to `target/snapshots/scaffold.png`, to check the window, fonts and tokens load.
 
 use std::path::PathBuf;
 use std::rc::Rc;

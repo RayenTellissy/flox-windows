@@ -417,7 +417,7 @@ struct Graphs {
     login: FocusGraph,
     queue: FocusGraph,
     library: FocusGraph,
-    /// Placeholder screens (Queue, Library, Settings, Login, Player).
+    /// The player screen, whose overlay focus the player view keeps.
     other: FocusGraph,
 }
 

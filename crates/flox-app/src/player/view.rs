@@ -237,7 +237,7 @@ pub enum PlayerKey {
     Swallow,
 }
 
-/// Plan section 1: Enter, Esc/Backspace, arrows, Space, M or the menu key, Ctrl+R, F11.
+/// The player's keys: Enter, Esc/Backspace, arrows, Space, M or the menu key, Ctrl+R, F11.
 pub fn player_key(text: &str, modifiers: Modifiers) -> Option<PlayerKey> {
     Some(match key_action(text, modifiers, false)? {
         KeyAction::Center => PlayerKey::Key(Key::Center),
