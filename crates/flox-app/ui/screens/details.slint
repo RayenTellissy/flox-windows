@@ -1,7 +1,225 @@
-import { ScreenPlaceholder } from "placeholder.slint";
+// Details: the header (280×420 poster, meta line with library stamps, title,
+// overview, PLAY / RESUME), then for TV the season pills and the episode list.
+// Data and focus come from Rust (src/app.rs, src/vm/details.rs). The page scrolls to
+// keep the focused item in view.
+//
+// Ingest (piece P16c) plugs in at two marked places: `IngestActionBar` beside the
+// PLAY button (zone DetailsZones.ingest) and the episode rows' selection marks,
+// driven by DetailsState.ingest-mode and Episode.selected.
+import { Tokens } from "../tokens.slint";
+import {
+    FocusState, Eyebrow, Heading, Body, FilledButton, SeasonPill, EpisodeRow, StateStamp
+} from "../components/all.slint";
+import { Reveal } from "home.slint";
 
-export component DetailsScreen inherits ScreenPlaceholder {
-    eyebrow: "DETAILS";
-    heading: "Details";
-    caption: "Seasons, episodes and ingest actions.";
+export struct Season {
+    label: string,
+    selected: bool,
+}
+
+export struct Episode {
+    still: image,
+    meta: string,
+    name: string,
+    overview: string,
+    // Ingest selection (P16c).
+    selected: bool,
+}
+
+// Mirrors the zone constants in src/vm/details.rs.
+export global DetailsZones {
+    out property <int> play: 20;
+    out property <int> seasons: 21;
+    out property <int> episodes: 22;
+    // Reserved for the ingest action bar (P16c).
+    out property <int> ingest: 23;
+}
+
+export global DetailsState {
+    // A full-page stamp while the title loads or when it failed; empty once loaded.
+    in property <string> state: "LOADING";
+    in property <image> poster;
+    in property <string> meta;
+    in property <string> title;
+    in property <string> overview;
+    in property <string> play-label: "PLAY";
+    // True shows the continue icon on the filled button.
+    in property <bool> resume;
+    in property <bool> is-tv;
+    in property <bool> library-only;
+    in property <[Season]> seasons;
+    in property <[Episode]> episodes;
+    // A stamp in place of the episode list (LOADING, NO RESULTS, REQUEST FAILED).
+    in property <string> episodes-state;
+    // Ingest mode (P16c): episode rows show selection marks.
+    in property <bool> ingest-mode;
+    in-out property <length> scroll-y;
+    in-out property <length> seasons-x;
+}
+
+// Slot for the ingest action bar (VIDLINK, PASTE LINKS, LOCAL FILES, 4KHDHUB) that
+// piece P16c fills. Empty until then; it sits right of PLAY in the header.
+export component IngestActionBar inherits HorizontalLayout {
+    spacing: Tokens.space-md;
+    alignment: start;
+}
+
+export component DetailsScreen inherits Rectangle {
+    property <int> season-index: FocusState.zone == DetailsZones.seasons ? FocusState.index : -1;
+    property <bool> play-focused: FocusState.zone == DetailsZones.play || FocusState.zone == DetailsZones.ingest;
+
+    background: Tokens.canvas;
+
+    function reveal(y: length, height: length) {
+        flick.content-y = -Reveal.offset(-flick.content-y, flick.height, page.preferred-height, y, height);
+    }
+
+    changed play-focused => {
+        if root.play-focused {
+            flick.content-y = 0px;
+        }
+    }
+    changed season-index => {
+        if root.season-index >= 0 {
+            root.reveal(seasons-row.y, seasons-row.height);
+        }
+    }
+
+    flick := Flickable {
+        width: 100%;
+        height: 100%;
+        visible: DetailsState.state == "";
+        content-height: page.preferred-height;
+        content-y <=> DetailsState.scroll-y;
+
+        page := VerticalLayout {
+            padding: Tokens.screen-padding;
+            spacing: Tokens.space-xl;
+            alignment: start;
+
+            // Header
+            HorizontalLayout {
+                spacing: Tokens.space-xl;
+                alignment: start;
+
+                Rectangle {
+                    width: Tokens.details-poster-width;
+                    height: Tokens.details-poster-height;
+                    background: Tokens.card;
+                    clip: true;
+
+                    Image {
+                        source: DetailsState.poster;
+                        width: 100%;
+                        height: 100%;
+                        image-fit: cover;
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: start;
+                    horizontal-stretch: 1;
+
+                    Eyebrow {
+                        text: DetailsState.meta;
+                    }
+
+                    Rectangle {
+                        height: Tokens.space-sm;
+                    }
+
+                    Heading {
+                        text: DetailsState.title;
+                        wrap: word-wrap;
+                        overflow: elide;
+                        max-height: Tokens.heading-size * Tokens.heading-line-height * 2;
+                    }
+
+                    Rectangle {
+                        height: Tokens.space-md;
+                    }
+
+                    Body {
+                        text: DetailsState.overview;
+                        color: Tokens.text-secondary;
+                        wrap: word-wrap;
+                        overflow: elide;
+                        max-height: Tokens.body-size * Tokens.body-line-height * 5;
+                    }
+
+                    Rectangle {
+                        height: Tokens.space-lg;
+                    }
+
+                    HorizontalLayout {
+                        spacing: Tokens.space-md;
+                        alignment: start;
+
+                        FilledButton {
+                            text: DetailsState.play-label;
+                            icon: DetailsState.resume ? @image-url("../../../../assets/icons/ic_continue.png") : @image-url("../../../../assets/icons/ic_play.png");
+                            zone: DetailsZones.play;
+                            index: 0;
+                        }
+
+                        IngestActionBar { }
+                    }
+                }
+            }
+
+            // Season pills
+            seasons-row := Flickable {
+                height: DetailsState.is-tv && DetailsState.seasons.length > 0 ? 48px : 0px;
+                visible: self.height > 0;
+                content-width: pills.preferred-width;
+                content-x <=> DetailsState.seasons-x;
+
+                pills := HorizontalLayout {
+                    spacing: Tokens.space-sm;
+                    alignment: start;
+
+                    for season[i] in DetailsState.seasons: SeasonPill {
+                        text: season.label;
+                        selected: season.selected;
+                        zone: DetailsZones.seasons;
+                        index: i;
+                    }
+                }
+            }
+
+            // Episodes
+            episode-list := VerticalLayout {
+                spacing: Tokens.space-md;
+                visible: DetailsState.is-tv;
+
+                if DetailsState.is-tv && DetailsState.episodes-state != "": StateStamp {
+                    height: Tokens.still-height;
+                    text: DetailsState.episodes-state;
+                }
+
+                for episode[i] in DetailsState.episodes: EpisodeRow {
+                    min-height: Tokens.still-height;
+                    still: episode.still;
+                    meta: episode.meta;
+                    name: episode.name;
+                    overview: episode.overview;
+                    selectable: DetailsState.ingest-mode;
+                    selected: episode.selected;
+                    zone: DetailsZones.episodes;
+                    index: i;
+                    changed focused => {
+                        if self.focused {
+                            root.reveal(episode-list.y + self.y, self.height);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if DetailsState.state != "": StateStamp {
+        width: 100%;
+        height: 100%;
+        text: DetailsState.state;
+    }
 }

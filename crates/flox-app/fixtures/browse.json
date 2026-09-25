@@ -1,0 +1,620 @@
+{
+ "trending_movie": [
+  {
+   "id": 693134,
+   "media": "movie",
+   "title": "Dune: Part Two",
+   "year": 2024,
+   "poster_path": "/movie693134.jpg",
+   "overview": "Paul Atreides unites with the Fremen while on a path of revenge against the conspirators who destroyed his family.",
+   "popularity": 310.5
+  },
+  {
+   "id": 872585,
+   "media": "movie",
+   "title": "Oppenheimer",
+   "year": 2023,
+   "poster_path": "/movie872585.jpg",
+   "overview": "",
+   "popularity": 190.2
+  },
+  {
+   "id": 414906,
+   "media": "movie",
+   "title": "The Batman",
+   "year": 2022,
+   "poster_path": "/movie414906.jpg",
+   "overview": "",
+   "popularity": 150.9
+  },
+  {
+   "id": 329865,
+   "media": "movie",
+   "title": "Arrival",
+   "year": 2016,
+   "poster_path": "/movie329865.jpg",
+   "overview": "",
+   "popularity": 88.1
+  },
+  {
+   "id": 949,
+   "media": "movie",
+   "title": "Heat",
+   "year": 1995,
+   "poster_path": "/movie949.jpg",
+   "overview": "",
+   "popularity": 60.4
+  },
+  {
+   "id": 335984,
+   "media": "movie",
+   "title": "Blade Runner 2049",
+   "year": 2017,
+   "poster_path": "/movie335984.jpg",
+   "overview": "",
+   "popularity": 95.7
+  },
+  {
+   "id": 666277,
+   "media": "movie",
+   "title": "Past Lives",
+   "year": 2023,
+   "poster_path": "/movie666277.jpg",
+   "overview": "",
+   "popularity": 40.3
+  },
+  {
+   "id": 840430,
+   "media": "movie",
+   "title": "The Holdovers",
+   "year": 2023,
+   "poster_path": "/movie840430.jpg",
+   "overview": "",
+   "popularity": 55.0
+  }
+ ],
+ "trending_tv": [
+  {
+   "id": 95396,
+   "media": "tv",
+   "title": "Severance",
+   "year": 2022,
+   "poster_path": "/tv95396.jpg",
+   "overview": "Mark leads a team of office workers whose memories have been surgically divided between their work and personal lives.",
+   "popularity": 280.0
+  },
+  {
+   "id": 136315,
+   "media": "tv",
+   "title": "The Bear",
+   "year": 2022,
+   "poster_path": "/tv136315.jpg",
+   "overview": "",
+   "popularity": 120.4
+  },
+  {
+   "id": 126308,
+   "media": "tv",
+   "title": "Shogun",
+   "year": 2024,
+   "poster_path": "/tv126308.jpg",
+   "overview": "",
+   "popularity": 140.8
+  },
+  {
+   "id": 70523,
+   "media": "tv",
+   "title": "Dark",
+   "year": 2017,
+   "poster_path": "/tv70523.jpg",
+   "overview": "",
+   "popularity": 99.9
+  },
+  {
+   "id": 100088,
+   "media": "tv",
+   "title": "The Last of Us",
+   "year": 2023,
+   "poster_path": "/tv100088.jpg",
+   "overview": "",
+   "popularity": 210.6
+  },
+  {
+   "id": 95480,
+   "media": "tv",
+   "title": "Slow Horses",
+   "year": 2022,
+   "poster_path": "/tv95480.jpg",
+   "overview": "",
+   "popularity": 70.2
+  },
+  {
+   "id": 83867,
+   "media": "tv",
+   "title": "Andor",
+   "year": 2022,
+   "poster_path": "/tv83867.jpg",
+   "overview": "",
+   "popularity": 130.3
+  },
+  {
+   "id": 1438,
+   "media": "tv",
+   "title": "The Wire",
+   "year": 2002,
+   "poster_path": "/tv1438.jpg",
+   "overview": "",
+   "popularity": 80.5
+  }
+ ],
+ "details": [
+  {
+   "summary": {
+    "id": 95396,
+    "media": "tv",
+    "title": "Severance",
+    "year": 2022,
+    "poster_path": "/tv95396.jpg",
+    "overview": "Mark leads a team of office workers whose memories have been surgically divided between their work and personal lives.",
+    "popularity": 280.0
+   },
+   "runtime_min": 55,
+   "seasons": [
+    {
+     "number": 1,
+     "name": "Season 1",
+     "episode_count": 9
+    },
+    {
+     "number": 2,
+     "name": "Season 2",
+     "episode_count": 10
+    }
+   ]
+  },
+  {
+   "summary": {
+    "id": 693134,
+    "media": "movie",
+    "title": "Dune: Part Two",
+    "year": 2024,
+    "poster_path": "/movie693134.jpg",
+    "overview": "Paul Atreides unites with the Fremen while on a path of revenge against the conspirators who destroyed his family.",
+    "popularity": 310.5
+   },
+   "runtime_min": 167,
+   "seasons": []
+  },
+  {
+   "summary": {
+    "id": 136315,
+    "media": "tv",
+    "title": "The Bear",
+    "year": 2022,
+    "poster_path": "/tv136315.jpg",
+    "overview": "",
+    "popularity": 120.4
+   },
+   "runtime_min": 30,
+   "seasons": [
+    {
+     "number": 1,
+     "name": "Season 1",
+     "episode_count": 8
+    },
+    {
+     "number": 2,
+     "name": "Season 2",
+     "episode_count": 10
+    },
+    {
+     "number": 3,
+     "name": "Season 3",
+     "episode_count": 10
+    }
+   ]
+  }
+ ],
+ "seasons": [
+  {
+   "id": 95396,
+   "season": 1,
+   "episodes": [
+    {
+     "season": 1,
+     "episode": 1,
+     "name": "Good News About Hell",
+     "overview": "A new hire wakes on a conference table and cannot remember how she got there.",
+     "still_path": "/still11.jpg",
+     "runtime_min": 53
+    },
+    {
+     "season": 1,
+     "episode": 2,
+     "name": "Half Loop",
+     "overview": "The team is sent on an errand that leads somewhere nobody expected.",
+     "still_path": "/still12.jpg",
+     "runtime_min": 57
+    },
+    {
+     "season": 1,
+     "episode": 3,
+     "name": "In Perpetuity",
+     "overview": "An old colleague turns up with questions about the floor below.",
+     "still_path": "/still13.jpg",
+     "runtime_min": 61
+    },
+    {
+     "season": 1,
+     "episode": 4,
+     "name": "The You You Are",
+     "overview": "A quiet evening at home is interrupted by a message from work.",
+     "still_path": "/still14.jpg",
+     "runtime_min": 53
+    },
+    {
+     "season": 1,
+     "episode": 5,
+     "name": "The Grim Barbarity of Optics and Design",
+     "overview": "Two departments meet for the first time and the tour goes badly.",
+     "still_path": "/still15.jpg",
+     "runtime_min": 57
+    },
+    {
+     "season": 1,
+     "episode": 6,
+     "name": "Hide and Seek",
+     "overview": "Someone stops following the handbook and the floor notices.",
+     "still_path": "/still16.jpg",
+     "runtime_min": 61
+    },
+    {
+     "season": 1,
+     "episode": 7,
+     "name": "Defiant Jazz",
+     "overview": "A reward is offered, and not everyone wants it.",
+     "still_path": "/still17.jpg",
+     "runtime_min": 53
+    },
+    {
+     "season": 1,
+     "episode": 8,
+     "name": "What's for Dinner?",
+     "overview": "A dinner invitation brings two halves of a life too close together.",
+     "still_path": "/still18.jpg",
+     "runtime_min": 57
+    },
+    {
+     "season": 1,
+     "episode": 9,
+     "name": "The We We Are",
+     "overview": "Everything planned for the night starts to come apart.",
+     "still_path": "/still19.jpg",
+     "runtime_min": 61
+    }
+   ]
+  },
+  {
+   "id": 95396,
+   "season": 2,
+   "episodes": [
+    {
+     "season": 2,
+     "episode": 1,
+     "name": "Hello, Ms. Cobel",
+     "overview": "A new hire wakes on a conference table and cannot remember how she got there.",
+     "still_path": "/still21.jpg",
+     "runtime_min": 48
+    },
+    {
+     "season": 2,
+     "episode": 2,
+     "name": "Goodbye, Mrs. Selvig",
+     "overview": "The team is sent on an errand that leads somewhere nobody expected.",
+     "still_path": "/still22.jpg",
+     "runtime_min": 52
+    },
+    {
+     "season": 2,
+     "episode": 3,
+     "name": "Who Is Alive?",
+     "overview": "An old colleague turns up with questions about the floor below.",
+     "still_path": "/still23.jpg",
+     "runtime_min": 56
+    },
+    {
+     "season": 2,
+     "episode": 4,
+     "name": "Woe's Hollow",
+     "overview": "A quiet evening at home is interrupted by a message from work.",
+     "still_path": "/still24.jpg",
+     "runtime_min": 48
+    },
+    {
+     "season": 2,
+     "episode": 5,
+     "name": "Trojan's Horse",
+     "overview": "Two departments meet for the first time and the tour goes badly.",
+     "still_path": "/still25.jpg",
+     "runtime_min": 52
+    },
+    {
+     "season": 2,
+     "episode": 6,
+     "name": "Attila",
+     "overview": "Someone stops following the handbook and the floor notices.",
+     "still_path": "/still26.jpg",
+     "runtime_min": 56
+    },
+    {
+     "season": 2,
+     "episode": 7,
+     "name": "Chikhai Bardo",
+     "overview": "A reward is offered, and not everyone wants it.",
+     "still_path": "/still27.jpg",
+     "runtime_min": 48
+    },
+    {
+     "season": 2,
+     "episode": 8,
+     "name": "Sweet Vitriol",
+     "overview": "A dinner invitation brings two halves of a life too close together.",
+     "still_path": "/still28.jpg",
+     "runtime_min": 52
+    },
+    {
+     "season": 2,
+     "episode": 9,
+     "name": "The After Hours",
+     "overview": "Everything planned for the night starts to come apart.",
+     "still_path": "/still29.jpg",
+     "runtime_min": 56
+    },
+    {
+     "season": 2,
+     "episode": 10,
+     "name": "Cold Harbor",
+     "overview": "The team returns to a place that has changed around them.",
+     "still_path": "/still210.jpg",
+     "runtime_min": 48
+    }
+   ]
+  },
+  {
+   "id": 136315,
+   "season": 1,
+   "episodes": [
+    {
+     "season": 1,
+     "episode": 1,
+     "name": "System",
+     "overview": "A quiet evening at home is interrupted by a message from work.",
+     "still_path": "/bear1.jpg",
+     "runtime_min": 30
+    },
+    {
+     "season": 1,
+     "episode": 2,
+     "name": "Hands",
+     "overview": "Two departments meet for the first time and the tour goes badly.",
+     "still_path": "/bear2.jpg",
+     "runtime_min": 30
+    },
+    {
+     "season": 1,
+     "episode": 3,
+     "name": "Brigade",
+     "overview": "Someone stops following the handbook and the floor notices.",
+     "still_path": "/bear3.jpg",
+     "runtime_min": 30
+    },
+    {
+     "season": 1,
+     "episode": 4,
+     "name": "Dogs",
+     "overview": "A reward is offered, and not everyone wants it.",
+     "still_path": "/bear4.jpg",
+     "runtime_min": 30
+    },
+    {
+     "season": 1,
+     "episode": 5,
+     "name": "Sheridan",
+     "overview": "A dinner invitation brings two halves of a life too close together.",
+     "still_path": "/bear5.jpg",
+     "runtime_min": 30
+    },
+    {
+     "season": 1,
+     "episode": 6,
+     "name": "Ceres",
+     "overview": "Everything planned for the night starts to come apart.",
+     "still_path": "/bear6.jpg",
+     "runtime_min": 30
+    },
+    {
+     "season": 1,
+     "episode": 7,
+     "name": "Review",
+     "overview": "The team returns to a place that has changed around them.",
+     "still_path": "/bear7.jpg",
+     "runtime_min": 30
+    },
+    {
+     "season": 1,
+     "episode": 8,
+     "name": "Braciole",
+     "overview": "A new hire wakes on a conference table and cannot remember how she got there.",
+     "still_path": "/bear8.jpg",
+     "runtime_min": 30
+    }
+   ]
+  }
+ ],
+ "progress": [
+  {
+   "id": 95396,
+   "type": "tv",
+   "title": "Severance",
+   "poster": "/tv95396.jpg",
+   "watched": 1200,
+   "duration": 3300,
+   "season": 2,
+   "episode": 3,
+   "updated": 1758800000000
+  },
+  {
+   "id": 693134,
+   "type": "movie",
+   "title": "Dune: Part Two",
+   "poster": "/movie693134.jpg",
+   "watched": 3000,
+   "duration": 9960,
+   "season": 1,
+   "episode": 1,
+   "updated": 1758700000000
+  },
+  {
+   "id": 136315,
+   "type": "tv",
+   "title": "The Bear",
+   "poster": "/tv136315.jpg",
+   "watched": 400,
+   "duration": 1800,
+   "season": 1,
+   "episode": 4,
+   "updated": 1758600000000
+  }
+ ],
+ "library": [
+  {
+   "id": 693134,
+   "media": "movie",
+   "quality": "2160p DV",
+   "size": 42000000000,
+   "message_id": 900
+  },
+  {
+   "id": 693134,
+   "media": "movie",
+   "quality": "1080p",
+   "size": 9000000000,
+   "message_id": 901
+  },
+  {
+   "id": 329865,
+   "media": "movie",
+   "quality": "1080p",
+   "size": 7000000000,
+   "message_id": 400
+  },
+  {
+   "id": 95396,
+   "media": "tv",
+   "season": 1,
+   "episode": 1,
+   "quality": "1080p",
+   "size": 2000000000,
+   "message_id": 501
+  },
+  {
+   "id": 95396,
+   "media": "tv",
+   "season": 1,
+   "episode": 2,
+   "quality": "1080p",
+   "size": 2000000000,
+   "message_id": 502
+  },
+  {
+   "id": 95396,
+   "media": "tv",
+   "season": 1,
+   "episode": 3,
+   "quality": "1080p",
+   "size": 2000000000,
+   "message_id": 503
+  },
+  {
+   "id": 95396,
+   "media": "tv",
+   "season": 2,
+   "episode": 1,
+   "quality": "2160p DV",
+   "size": 6000000000,
+   "message_id": 801
+  },
+  {
+   "id": 95396,
+   "media": "tv",
+   "season": 2,
+   "episode": 1,
+   "quality": "1080p",
+   "size": 2000000000,
+   "message_id": 811
+  },
+  {
+   "id": 95396,
+   "media": "tv",
+   "season": 2,
+   "episode": 2,
+   "quality": "2160p DV",
+   "size": 6000000000,
+   "message_id": 802
+  },
+  {
+   "id": 95396,
+   "media": "tv",
+   "season": 2,
+   "episode": 2,
+   "quality": "1080p",
+   "size": 2000000000,
+   "message_id": 812
+  },
+  {
+   "id": 95396,
+   "media": "tv",
+   "season": 2,
+   "episode": 3,
+   "quality": "2160p DV",
+   "size": 6000000000,
+   "message_id": 803
+  },
+  {
+   "id": 95396,
+   "media": "tv",
+   "season": 2,
+   "episode": 3,
+   "quality": "1080p",
+   "size": 2000000000,
+   "message_id": 813
+  },
+  {
+   "id": 95396,
+   "media": "tv",
+   "season": 2,
+   "episode": 4,
+   "quality": "2160p DV",
+   "size": 6000000000,
+   "message_id": 804
+  },
+  {
+   "id": 95396,
+   "media": "tv",
+   "season": 2,
+   "episode": 4,
+   "quality": "1080p",
+   "size": 2000000000,
+   "message_id": 814
+  },
+  {
+   "id": 70523,
+   "media": "tv",
+   "season": 1,
+   "episode": 1,
+   "quality": "720p",
+   "size": 900000000,
+   "message_id": 100
+  }
+ ]
+}

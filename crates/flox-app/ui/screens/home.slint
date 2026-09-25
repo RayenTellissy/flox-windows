@@ -1,7 +1,162 @@
-import { ScreenPlaceholder } from "placeholder.slint";
+// Home: CONTINUE WATCHING (hidden when empty), LIBRARY, TRENDING MOVIES and
+// TRENDING TV, stacked 32 px apart under the top bar (drawn by app.slint). Data and
+// focus come from Rust (src/app.rs, src/vm/home.rs). Rows scroll themselves to keep
+// the focused poster in view, and the screen scrolls to keep the focused row in view.
+import { Tokens } from "../tokens.slint";
+import { FocusState, PosterCard, Row, GhostButton } from "../components/all.slint";
 
-export component HomeScreen inherits ScreenPlaceholder {
-    eyebrow: "SEARCH · QUEUE · LIBRARY · SETTINGS";
-    heading: "Flox";
-    caption: "Continue watching, your library and trending titles appear here.";
+// A poster, as every browse screen shows it.
+export struct Card {
+    title: string,
+    meta: string,
+    poster: image,
+    // 0..1 draws the progress line; negative hides it.
+    progress: float,
+}
+
+// Mirrors the zone constants in src/vm/home.rs.
+export global HomeZones {
+    out property <int> top-bar: 0;
+    out property <int> continue: 1;
+    out property <int> library: 2;
+    out property <int> movies: 3;
+    out property <int> tv: 4;
+}
+
+export global HomeState {
+    in property <[Card]> continue-items;
+    in property <[Card]> library-items;
+    // A centred stamp over the row (LOADING, NOTHING UPLOADED YET, REQUEST FAILED).
+    in property <string> library-state;
+    // A focusable prompt instead of posters (SET UP TELEGRAM, CONNECT TELEGRAM).
+    in property <string> library-prompt;
+    in property <[Card]> movies-items;
+    in property <string> movies-state: "LOADING";
+    in property <[Card]> tv-items;
+    in property <string> tv-state: "LOADING";
+    in property <int> queue-count;
+    in property <bool> telegram-ready;
+    // Scroll positions survive leaving and re-entering the screen.
+    in-out property <length> continue-x;
+    in-out property <length> library-x;
+    in-out property <length> movies-x;
+    in-out property <length> tv-x;
+    in-out property <length> scroll-y;
+}
+
+// Scroll arithmetic shared by the browse screens (focus::ensure_visible).
+export global Reveal {
+    // The offset (>= 0) that shows [start, start + len) in a viewport over content.
+    public pure function offset(scroll: length, viewport: length, content: length, start: length, len: length) -> length {
+        return clamp(
+            (start < scroll || len >= viewport) ? start : ((start + len > scroll + viewport) ? start + len - viewport : scroll),
+            0px,
+            max(0px, content - viewport));
+    }
+}
+
+// A labelled poster row bound to one zone. Keeps the focused poster in view and
+// asks the screen to reveal the row when focus enters it.
+component PosterRow inherits Row {
+    in property <[Card]> items;
+    in property <int> zone;
+    in property <string> prompt;
+
+    callback reveal(y: length, height: length);
+
+    property <int> focused-index: FocusState.zone == root.zone ? FocusState.index : -1;
+    property <length> pitch: Tokens.poster-width + Tokens.space-md;
+
+    min-list-height: root.prompt != "" ? 48px : Tokens.poster-height;
+
+    changed focused-index => {
+        if root.focused-index >= 0 {
+            root.reveal(root.y, root.height);
+            if root.prompt == "" {
+                root.viewport-x = -Reveal.offset(-root.viewport-x, root.viewport-width, root.items.length * root.pitch - Tokens.space-md, root.focused-index * root.pitch, Tokens.poster-width);
+            }
+        }
+    }
+
+    if root.prompt != "": GhostButton {
+        text: root.prompt;
+        zone: root.zone;
+        index: 0;
+    }
+
+    for card[i] in root.items: PosterCard {
+        poster: card.poster;
+        title: card.title;
+        meta: card.meta;
+        progress: card.progress;
+        zone: root.zone;
+        index: i;
+    }
+}
+
+export component HomeScreen inherits Rectangle {
+    background: Tokens.canvas;
+
+    flick := Flickable {
+        width: 100%;
+        height: 100%;
+        content-height: rows.preferred-height;
+        content-y <=> HomeState.scroll-y;
+
+        rows := VerticalLayout {
+            padding-left: Tokens.screen-padding;
+            padding-right: Tokens.screen-padding;
+            padding-bottom: Tokens.screen-padding;
+            spacing: Tokens.space-xl;
+            alignment: start;
+
+            if HomeState.continue-items.length > 0: PosterRow {
+                label: "CONTINUE WATCHING";
+                icon: @image-url("../../../../assets/icons/ic_continue.png");
+                items: HomeState.continue-items;
+                zone: HomeZones.continue;
+                viewport-x <=> HomeState.continue-x;
+                reveal(y, height) => {
+                    flick.content-y = -Reveal.offset(-flick.content-y, flick.height, rows.preferred-height, y, height);
+                }
+            }
+
+            PosterRow {
+                label: "LIBRARY";
+                icon: @image-url("../../../../assets/icons/ic_movie.png");
+                items: HomeState.library-items;
+                state: HomeState.library-state;
+                prompt: HomeState.library-prompt;
+                zone: HomeZones.library;
+                viewport-x <=> HomeState.library-x;
+                reveal(y, height) => {
+                    flick.content-y = -Reveal.offset(-flick.content-y, flick.height, rows.preferred-height, y, height);
+                }
+            }
+
+            PosterRow {
+                label: "TRENDING MOVIES";
+                icon: @image-url("../../../../assets/icons/ic_movie.png");
+                items: HomeState.movies-items;
+                state: HomeState.movies-state;
+                zone: HomeZones.movies;
+                viewport-x <=> HomeState.movies-x;
+                reveal(y, height) => {
+                    flick.content-y = -Reveal.offset(-flick.content-y, flick.height, rows.preferred-height, y, height);
+                }
+            }
+
+            PosterRow {
+                label: "TRENDING TV";
+                icon: @image-url("../../../../assets/icons/ic_tv.png");
+                items: HomeState.tv-items;
+                state: HomeState.tv-state;
+                zone: HomeZones.tv;
+                viewport-x <=> HomeState.tv-x;
+                reveal(y, height) => {
+                    flick.content-y = -Reveal.offset(-flick.content-y, flick.height, rows.preferred-height, y, height);
+                }
+            }
+        }
+    }
 }
