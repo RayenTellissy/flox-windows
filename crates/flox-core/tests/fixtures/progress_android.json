@@ -1,0 +1,8 @@
+[
+  {"id":1396,"type":"tv","title":"Breaking Bad","poster":"/ggFHVNu6YYI5L9pCfOacjizRGt.jpg","watched":1200,"duration":2820,"season":3,"episode":7,"updated":1727200000000},
+  {"id":27205,"type":"movie","title":"Inception","poster":"null","watched":8500,"duration":8880,"season":1,"episode":1,"updated":1727100000000},
+  {"id":603,"type":"movie","title":"The Matrix","watched":300,"duration":8160,"updated":1727000000000},
+  {"id":1396,"type":"tv","title":"Breaking Bad (older duplicate)","watched":10,"duration":2820,"season":1,"episode":1,"updated":1726000000000},
+  {"title":"no id, skipped"},
+  {"id":550,"type":"movie","title":"Fight Club","poster":"","watched":0,"duration":0,"season":1,"episode":1,"updated":1725000000000}
+]

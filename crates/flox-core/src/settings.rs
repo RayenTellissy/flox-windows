@@ -4,14 +4,18 @@
 //! the Android enum names, so an Android-shaped file round-trips. Persistence,
 //! clamping and unknown-key preservation are filled in by piece P2.
 
+use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use tokio::sync::watch;
 
 use crate::error::{Error, Result};
+use crate::paths::write_atomic;
 
 /// Subtitle size. `"SMALL"` | `"NORMAL"` | `"LARGE"`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -168,21 +172,135 @@ impl Default for Settings {
     }
 }
 
+/// Every key [`Settings`] owns in `settings.json`. Any other key in the file is kept on save.
+pub const KNOWN_KEYS: &[&str] = &[
+    "audio_language",
+    "subtitles_enabled",
+    "subtitle_language",
+    "subtitle_size",
+    "autoplay_next",
+    "seek_step_seconds",
+    "loudness_boost",
+    "loudness_gain_db",
+    "overlay_hide_ms",
+    "resume_mode",
+    "finished_threshold_percent",
+    "playback_speed",
+    "aspect_mode",
+    "library_sort",
+    "telegram_channel",
+    "continue_watching_limit",
+    "quality",
+    "ui_scale",
+    "tmdb_api_key",
+    "telegram_api_id",
+    "telegram_api_hash",
+    "ffmpeg_path",
+    "ytdlp_path",
+    "tdjson_path",
+    "libmpv_path",
+];
+
 impl Settings {
-    /// Reads `settings.json`; a missing file gives the defaults. Filled in by P2.
-    pub fn load(_path: &Path) -> Result<Settings> {
-        Err(Error::NotImplemented("flox_core::settings::Settings::load"))
+    /// Reads `settings.json`; a missing or blank file gives the defaults. Keys whose value
+    /// has the wrong type or an unknown enum name fall back to their default, as Android
+    /// does. The result is [`clamped`](Settings::clamped). A file that is not a JSON object
+    /// is an error.
+    pub fn load(path: &Path) -> Result<Settings> {
+        let text = match fs::read_to_string(path) {
+            Ok(t) => t,
+            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Settings::default()),
+            Err(e) => return Err(e.into()),
+        };
+        if text.trim().is_empty() {
+            return Ok(Settings::default());
+        }
+        let file: Map<String, Value> = serde_json::from_str(&text)?;
+        Ok(Settings::from_map(&file).clamped())
     }
 
-    /// Writes `settings.json` atomically, keeping unknown keys. Filled in by P2.
-    pub fn save(&self, _path: &Path) -> Result<()> {
-        Err(Error::NotImplemented("flox_core::settings::Settings::save"))
+    /// Builds settings from a parsed object, dropping any known key whose value does not
+    /// deserialize so that one bad value never discards the rest.
+    fn from_map(file: &Map<String, Value>) -> Settings {
+        let mut accepted = Map::new();
+        for (key, value) in file {
+            if !KNOWN_KEYS.contains(&key.as_str()) {
+                continue;
+            }
+            let value = coerce(key, value);
+            let mut candidate = accepted.clone();
+            candidate.insert(key.clone(), value.clone());
+            if serde_json::from_value::<Settings>(Value::Object(candidate)).is_ok() {
+                accepted.insert(key.clone(), value);
+            }
+        }
+        serde_json::from_value(Value::Object(accepted)).unwrap_or_default()
     }
 
-    /// Snaps every number to its nearest allowed option and clamps the gain. Filled in by P2.
-    #[allow(clippy::unimplemented)]
+    /// Writes `settings.json` atomically (temp file, then rename). Keys this version does
+    /// not know are copied from the existing file; `None` values are left out.
+    pub fn save(&self, path: &Path) -> Result<()> {
+        let mut out = match serde_json::to_value(self.clone().clamped())? {
+            Value::Object(m) => m,
+            _ => Map::new(),
+        };
+        if let Ok(text) = fs::read_to_string(path) {
+            if let Ok(Value::Object(existing)) = serde_json::from_str::<Value>(&text) {
+                for (key, value) in existing {
+                    if !KNOWN_KEYS.contains(&key.as_str()) {
+                        out.insert(key, value);
+                    }
+                }
+            }
+        }
+        let mut bytes = serde_json::to_vec_pretty(&Value::Object(out))?;
+        bytes.push(b'\n');
+        write_atomic(path, &bytes)
+    }
+
+    /// Snaps every number to its nearest allowed option (the first one wins a tie, as
+    /// `nearest()` in `Settings.kt`), clamps the gain to [`LOUDNESS_GAIN_RANGE`], and turns
+    /// empty strings, empty paths and a zero API id into `None`. A blank Telegram channel
+    /// becomes the default.
     pub fn clamped(self) -> Settings {
-        unimplemented!("flox_core::settings::Settings::clamped (P2)")
+        let (gain_min, gain_max) = LOUDNESS_GAIN_RANGE;
+        Settings {
+            audio_language: opt_string(self.audio_language),
+            subtitle_language: opt_string(self.subtitle_language),
+            seek_step_seconds: nearest_u32(self.seek_step_seconds, SEEK_STEPS),
+            loudness_gain_db: if self.loudness_gain_db.is_finite() {
+                self.loudness_gain_db.clamp(gain_min, gain_max)
+            } else {
+                DEFAULT_LOUDNESS_GAIN_DB
+            },
+            overlay_hide_ms: nearest_u32(self.overlay_hide_ms, OVERLAY_HIDE_OPTIONS),
+            finished_threshold_percent: nearest_u32(
+                self.finished_threshold_percent,
+                FINISHED_THRESHOLDS,
+            ),
+            playback_speed: nearest_f32(
+                self.playback_speed,
+                PLAYBACK_SPEEDS,
+                DEFAULT_PLAYBACK_SPEED,
+            ),
+            telegram_channel: non_empty(Some(&self.telegram_channel))
+                .unwrap_or(DEFAULT_TELEGRAM_CHANNEL)
+                .to_owned(),
+            continue_watching_limit: nearest_u32(
+                self.continue_watching_limit,
+                CONTINUE_WATCHING_LIMITS,
+            ),
+            quality: opt_string(self.quality),
+            ui_scale: nearest_f32(self.ui_scale, UI_SCALES, DEFAULT_UI_SCALE),
+            tmdb_api_key: opt_string(self.tmdb_api_key),
+            telegram_api_id: self.telegram_api_id.filter(|id| *id != 0),
+            telegram_api_hash: opt_string(self.telegram_api_hash),
+            ffmpeg_path: opt_path(self.ffmpeg_path),
+            ytdlp_path: opt_path(self.ytdlp_path),
+            tdjson_path: opt_path(self.tdjson_path),
+            libmpv_path: opt_path(self.libmpv_path),
+            ..self
+        }
     }
 
     /// The TMDB key to use: the saved one, else the build-time one.
@@ -231,6 +349,57 @@ fn non_empty(s: Option<&str>) -> Option<&str> {
     s.map(str::trim).filter(|s| !s.is_empty())
 }
 
+/// Keys stored as whole numbers on Android (`putInt`).
+const INT_KEYS: &[&str] = &[
+    "seek_step_seconds",
+    "overlay_hide_ms",
+    "finished_threshold_percent",
+    "continue_watching_limit",
+];
+
+/// Brings an out-of-range or fractional number for an integer key into `u32` range so it
+/// still snaps to the nearest option instead of being dropped.
+fn coerce(key: &str, value: &Value) -> Value {
+    match value.as_f64() {
+        Some(n) if INT_KEYS.contains(&key) && n.is_finite() => {
+            Value::from(n.clamp(0.0, f64::from(u32::MAX)).round() as u32)
+        }
+        _ => value.clone(),
+    }
+}
+
+fn opt_string(s: Option<String>) -> Option<String> {
+    s.filter(|s| !s.trim().is_empty())
+}
+
+fn opt_path(p: Option<PathBuf>) -> Option<PathBuf> {
+    p.filter(|p| !p.as_os_str().to_string_lossy().trim().is_empty())
+}
+
+/// The allowed option closest to `value`; the first one wins a tie.
+pub fn nearest_u32(value: u32, allowed: &[u32]) -> u32 {
+    allowed
+        .iter()
+        .copied()
+        .min_by_key(|a| a.abs_diff(value))
+        .unwrap_or(value)
+}
+
+/// The allowed option closest to `value`; the first one wins a tie. A non-finite
+/// `value` gives `fallback`.
+pub fn nearest_f32(value: f32, allowed: &[f32], fallback: f32) -> f32 {
+    if !value.is_finite() {
+        return fallback;
+    }
+    let mut best: Option<f32> = None;
+    for a in allowed.iter().copied() {
+        if best.is_none_or(|b| (a - value).abs() < (b - value).abs()) {
+            best = Some(a);
+        }
+    }
+    best.unwrap_or(value)
+}
+
 /// Shared, observable settings: the current value, its file, and a watch channel
 /// that fires on every change. Cheap to clone.
 #[derive(Clone)]
@@ -251,11 +420,21 @@ impl SettingsStore {
         }
     }
 
-    /// Loads (clamped) from `path`. Filled in by P2.
-    pub fn open(_path: PathBuf) -> Result<Self> {
-        Err(Error::NotImplemented(
-            "flox_core::settings::SettingsStore::open",
-        ))
+    /// Loads (clamped) from `path`. A file that is not valid JSON is logged and replaced
+    /// by the defaults on the next save; I/O errors are returned.
+    pub fn open(path: PathBuf) -> Result<Self> {
+        let settings = match Settings::load(&path) {
+            Ok(s) => s,
+            Err(Error::Json(e)) => {
+                tracing::warn!(
+                    "settings file {} is unreadable, using defaults: {e}",
+                    path.display()
+                );
+                Settings::default()
+            }
+            Err(e) => return Err(e),
+        };
+        Ok(Self::new(path, settings))
     }
 
     /// The file backing this store.
@@ -268,11 +447,21 @@ impl SettingsStore {
         self.current.read().clone()
     }
 
-    /// Applies `f`, clamps, saves and notifies. Filled in by P2.
-    pub fn update(&self, _f: impl FnOnce(&mut Settings)) -> Result<()> {
-        Err(Error::NotImplemented(
-            "flox_core::settings::SettingsStore::update",
-        ))
+    /// Applies `f`, clamps, saves and notifies. Nothing changes in memory when the save
+    /// fails, and subscribers are only notified when the value actually changed.
+    pub fn update(&self, f: impl FnOnce(&mut Settings)) -> Result<()> {
+        let mut current = self.current.write();
+        let mut next = current.clone();
+        f(&mut next);
+        let next = next.clamped();
+        if next == *current {
+            return Ok(());
+        }
+        next.save(&self.path)?;
+        *current = next.clone();
+        drop(current);
+        self.changes.send_replace(next);
+        Ok(())
     }
 
     /// A receiver that sees every change.
