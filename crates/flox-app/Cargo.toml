@@ -37,6 +37,8 @@ tracing-subscriber.workspace = true
 parking_lot.workspace = true
 qrcode.workspace = true
 uuid.workspace = true
+reqwest.workspace = true
+url.workspace = true
 
 [build-dependencies]
 slint-build.workspace = true

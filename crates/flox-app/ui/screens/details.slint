@@ -3,13 +3,14 @@
 // Data and focus come from Rust (src/app.rs, src/vm/details.rs). The page scrolls to
 // keep the focused item in view.
 //
-// Ingest (piece P16c) plugs in at two marked places: `IngestActionBar` beside the
+// Ingest (piece P16c) plugs in at two marked places: `IngestActionBar` under the
 // PLAY button (zone DetailsZones.ingest) and the episode rows' selection marks,
 // driven by DetailsState.ingest-mode and Episode.selected.
 import { Tokens } from "../tokens.slint";
 import {
     FocusState, Eyebrow, Heading, Body, FilledButton, SeasonPill, EpisodeRow, StateStamp
 } from "../components/all.slint";
+import { GhostButton, FocusArea, FocusRing } from "../components/all.slint";
 import { Reveal } from "home.slint";
 
 export struct Season {
@@ -57,11 +58,102 @@ export global DetailsState {
     in-out property <length> seasons-x;
 }
 
-// Slot for the ingest action bar (VIDLINK, PASTE LINKS, LOCAL FILES, 4KHDHUB) that
-// piece P16c fills. Empty until then; it sits right of PLAY in the header.
-export component IngestActionBar inherits HorizontalLayout {
-    spacing: Tokens.space-md;
+// The ingest action bar, one focus row (DetailsZones.ingest) under PLAY: VIDLINK
+// (filled, the default; for TV only with a selection), PASTE LINKS, LOCAL FILES and
+// 4KHDHUB (SEASON FROM 4KHDHUB when nothing is selected), then the selection line.
+// Rust fills IngestBar (src/ingest_shell.rs, src/vm/ingest.rs).
+export global IngestBar {
+    in property <bool> vidlink-enabled: true;
+    in property <string> hub-label: "4KHDHUB";
+    in property <bool> hub-enabled: true;
+    // `3 SELECTED · SPACE OR X SELECTS · A ALL · N NONE [· 3 QUEUED]`; empty hides it.
+    in property <string> line;
+}
+
+// A filled button that cannot be used right now: hairline outline, disabled label.
+// It stays focusable so the bar keeps its positions.
+component DisabledButton inherits Rectangle {
+    in property <string> text;
+    in property <int> zone: -1;
+    in property <int> index: 0;
+    out property <bool> focused: root.zone >= 0 && FocusState.zone == root.zone && FocusState.index == root.index;
+
+    min-height: 48px;
+
+    HorizontalLayout {
+        padding-left: Tokens.space-lg;
+        padding-right: Tokens.space-lg;
+        alignment: center;
+
+        Text {
+            text: root.text;
+            font-family: Tokens.font-sans;
+            font-weight: Tokens.weight-medium;
+            font-size: Tokens.button-size;
+            letter-spacing: Tokens.button-letter-spacing;
+            color: Tokens.text-disabled;
+            vertical-alignment: center;
+        }
+    }
+
+    FocusArea {
+        zone: root.zone;
+        index: root.index;
+    }
+
+    FocusRing {
+        focused: root.focused;
+        rest: Tokens.hairline-strong;
+    }
+}
+
+export component IngestActionBar inherits VerticalLayout {
+    spacing: Tokens.space-sm;
     alignment: start;
+
+    HorizontalLayout {
+        spacing: Tokens.space-md;
+        alignment: start;
+
+        if IngestBar.vidlink-enabled: FilledButton {
+            text: "VIDLINK";
+            zone: DetailsZones.ingest;
+            index: 0;
+        }
+        if !IngestBar.vidlink-enabled: DisabledButton {
+            text: "VIDLINK";
+            zone: DetailsZones.ingest;
+            index: 0;
+        }
+
+        GhostButton {
+            text: "PASTE LINKS";
+            zone: DetailsZones.ingest;
+            index: 1;
+        }
+
+        GhostButton {
+            text: "LOCAL FILES";
+            zone: DetailsZones.ingest;
+            index: 2;
+        }
+
+        if IngestBar.hub-enabled: GhostButton {
+            text: IngestBar.hub-label;
+            zone: DetailsZones.ingest;
+            index: 3;
+        }
+        if !IngestBar.hub-enabled: DisabledButton {
+            text: IngestBar.hub-label;
+            zone: DetailsZones.ingest;
+            index: 3;
+        }
+    }
+
+    if IngestBar.line != "": Eyebrow {
+        text: IngestBar.line;
+        color: Tokens.text-muted;
+    }
 }
 
 export component DetailsScreen inherits Rectangle {
@@ -162,8 +254,13 @@ export component DetailsScreen inherits Rectangle {
                             index: 0;
                         }
 
-                        IngestActionBar { }
                     }
+
+                    if DetailsState.ingest-mode: Rectangle {
+                        height: Tokens.space-md;
+                    }
+
+                    if DetailsState.ingest-mode: IngestActionBar { }
                 }
             }
 

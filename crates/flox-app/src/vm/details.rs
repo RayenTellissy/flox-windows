@@ -16,7 +16,7 @@ use crate::router::PlayRequest;
 pub const PLAY: ZoneId = ZoneId(20);
 pub const SEASONS: ZoneId = ZoneId(21);
 pub const EPISODES: ZoneId = ZoneId(22);
-/// Reserved for the ingest action bar (piece P16c), declared after PLAY.
+/// The ingest action bar, declared after PLAY.
 pub const INGEST: ZoneId = ZoneId(23);
 
 /// The filled button's label and icon.
@@ -178,6 +178,8 @@ pub fn episode_request(
 pub fn zones(loaded: bool, seasons: usize, episodes: usize) -> Vec<Zone> {
     vec![
         Zone::row(PLAY, usize::from(loaded)),
+        // The ingest action bar; the shell sets its length in ingest mode.
+        Zone::row(INGEST, 0),
         Zone::row(SEASONS, seasons),
         Zone::list(EPISODES, episodes),
     ]
@@ -406,6 +408,9 @@ mod tests {
         assert!(loading.iter().all(|z| z.is_empty()));
         let loaded = zones(true, 3, 10);
         assert_eq!(loaded[0].len(), 1);
-        assert_eq!(loaded[2].len(), 10);
+        assert_eq!(loaded[1].id(), INGEST);
+        assert!(loaded[1].is_empty());
+        assert_eq!(loaded[2].len(), 3);
+        assert_eq!(loaded[3].len(), 10);
     }
 }

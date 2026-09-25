@@ -1,0 +1,283 @@
+// The 4KHDHub dialog (Mac HdHubView). It opens on SEARCHING 4KHDHUB…; when the
+// title is not found a URL field and LOAD take its place; once a page is read, its
+// variants for the season are listed (label, movie file name, N UPLOADED badge,
+// picked of wanted, size) with the chosen one marked, then the skip-uploaded toggle
+// and the page host. CANCEL closes; QUEUE N queues hub jobs.
+//
+// The Mac draws an incomplete "picked of wanted" in orange; the palette has no
+// orange, so a complete count reads muted and an incomplete one primary.
+import { Tokens } from "../tokens.slint";
+import { FocusState, FocusArea, FocusRing } from "focus.slint";
+import { Caption, Eyebrow } from "text.slint";
+import { FilledButton, GhostButton } from "buttons.slint";
+import { TextField } from "text_field.slint";
+import { StateStamp } from "stamps.slint";
+import { SelectionMark } from "episode.slint";
+import { Dialog } from "dialog.slint";
+import { DialogScroll } from "paste_links.slint";
+
+export struct HubRow {
+    label: string,
+    name: string,
+    badge: string,
+    count: string,
+    complete: bool,
+    size: string,
+}
+
+// Mirrors the constants in src/vm/ingest.rs.
+export global HubZones {
+    out property <int> url: 86;
+    out property <int> load: 87;
+    out property <int> variants: 88;
+    out property <int> skip: 89;
+    out property <int> footer: 90;
+}
+
+export global HubState {
+    in property <bool> open;
+    // 0: searching or reading (a stamp), 1: URL field + LOAD, 2: the variants.
+    in property <int> phase;
+    in property <string> status: "SEARCHING 4KHDHUB…";
+    // `Severance · Season 2 · 10 episodes`.
+    in property <string> subtitle;
+    in-out property <string> url;
+    in property <[HubRow]> variants;
+    in property <int> chosen: -1;
+    in property <bool> skip-uploaded: true;
+    in property <string> host;
+    // `3 ALREADY UPLOADED AT THIS QUALITY`.
+    in property <string> note;
+    in property <string> queue-label: "QUEUE 0";
+
+    callback url-edited(text: string);
+    callback url-accepted();
+}
+
+component VariantRow inherits Rectangle {
+    in property <HubRow> data;
+    in property <bool> chosen;
+    in property <int> zone: -1;
+    in property <int> index: 0;
+    out property <bool> focused: root.zone >= 0 && FocusState.zone == root.zone && FocusState.index == root.index;
+
+    min-height: 56px;
+    background: Tokens.card;
+
+    HorizontalLayout {
+        padding-left: Tokens.space-md;
+        padding-right: Tokens.space-md;
+        padding-top: Tokens.space-sm;
+        padding-bottom: Tokens.space-sm;
+        spacing: Tokens.space-md;
+
+        VerticalLayout {
+            alignment: center;
+
+            SelectionMark {
+                selected: root.chosen;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: Tokens.space-xxs;
+            horizontal-stretch: 1;
+
+            Caption {
+                text: root.data.label;
+                color: Tokens.text-primary;
+                overflow: elide;
+            }
+
+            if root.data.name != "": Eyebrow {
+                text: root.data.name;
+                color: Tokens.text-muted;
+            }
+        }
+
+        if root.data.badge != "": Eyebrow {
+            text: root.data.badge;
+            color: Tokens.text-muted;
+            vertical-alignment: center;
+        }
+
+        if root.data.count != "": Eyebrow {
+            text: root.data.count;
+            color: root.data.complete ? Tokens.text-muted : Tokens.text-primary;
+            vertical-alignment: center;
+        }
+
+        Eyebrow {
+            width: 88px;
+            text: root.data.size;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+    }
+
+    FocusArea {
+        zone: root.zone;
+        index: root.index;
+    }
+
+    FocusRing {
+        focused: root.focused;
+        rest: Tokens.hairline;
+    }
+}
+
+// The skip toggle: a square mark and its label, focusable as one item.
+component SkipToggle inherits Rectangle {
+    in property <bool> on;
+    in property <int> zone: -1;
+    out property <bool> focused: root.zone >= 0 && FocusState.zone == root.zone && FocusState.index == 0;
+
+    min-height: 48px;
+
+    HorizontalLayout {
+        padding-left: Tokens.space-md;
+        padding-right: Tokens.space-md;
+        spacing: Tokens.space-sm;
+
+        VerticalLayout {
+            alignment: center;
+
+            SelectionMark {
+                selected: root.on;
+            }
+        }
+
+        Eyebrow {
+            text: "SKIP EPISODES ALREADY UPLOADED AT THIS QUALITY";
+            vertical-alignment: center;
+        }
+    }
+
+    FocusArea {
+        zone: root.zone;
+        index: 0;
+    }
+
+    FocusRing {
+        focused: root.focused;
+    }
+}
+
+export component HubVariantsDialog inherits Dialog {
+    property <length> row-pitch: 72px + Tokens.space-xs;
+    property <int> focused-row: FocusState.zone == HubZones.variants ? FocusState.index : -1;
+
+    label: "4KHDHUB";
+    title: "Download from 4KHDHub";
+    panel-width: 880px;
+
+    changed focused-row => {
+        if root.focused-row >= 0 {
+            list.content-y = -DialogScroll.offset(-list.content-y, list.height, list.content-height, root.focused-row * root.row-pitch, 72px);
+        }
+    }
+
+    Caption {
+        text: HubState.subtitle;
+        wrap: word-wrap;
+    }
+
+    if HubState.phase == 0: StateStamp {
+        height: 200px;
+        text: HubState.status;
+    }
+
+    if HubState.phase == 1: VerticalLayout {
+        spacing: Tokens.space-sm;
+
+        Eyebrow {
+            text: HubState.status;
+            wrap: word-wrap;
+            overflow: clip;
+        }
+
+        HorizontalLayout {
+            spacing: Tokens.space-sm;
+
+            TextField {
+                horizontal-stretch: 1;
+                text <=> HubState.url;
+                placeholder: "https://4khdhub.one/…";
+                input-type: InputType.text;
+                zone: HubZones.url;
+                edited(text) => {
+                    HubState.url-edited(text);
+                }
+                accepted => {
+                    HubState.url-accepted();
+                }
+            }
+
+            GhostButton {
+                text: "LOAD";
+                zone: HubZones.load;
+            }
+        }
+    }
+
+    list := Flickable {
+        visible: HubState.phase == 2;
+        height: HubState.phase == 2 ? min(HubState.variants.length * root.row-pitch, 4 * root.row-pitch) : 0px;
+        content-height: HubState.variants.length * root.row-pitch;
+
+        for variant[i] in HubState.variants: VariantRow {
+            x: 0;
+            y: i * root.row-pitch;
+            width: list.width;
+            height: 72px;
+            data: variant;
+            chosen: i == HubState.chosen;
+            zone: HubZones.variants;
+            index: i;
+        }
+    }
+
+    if HubState.phase == 2: HorizontalLayout {
+        spacing: Tokens.space-md;
+
+        SkipToggle {
+            on: HubState.skip-uploaded;
+            zone: HubZones.skip;
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+        }
+
+        Eyebrow {
+            text: HubState.host;
+            color: Tokens.text-muted;
+            vertical-alignment: center;
+        }
+    }
+
+    HorizontalLayout {
+        spacing: Tokens.space-md;
+        padding-top: Tokens.space-sm;
+
+        Eyebrow {
+            text: HubState.note;
+            color: Tokens.text-muted;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+
+        GhostButton {
+            text: "CANCEL";
+            zone: HubZones.footer;
+            index: 0;
+        }
+
+        FilledButton {
+            text: HubState.queue-label;
+            zone: HubZones.footer;
+            index: 1;
+        }
+    }
+}

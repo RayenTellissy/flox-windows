@@ -1,0 +1,144 @@
+// The paste links dialog (Mac PasteLinksView): one row per episode with an
+// editable episode number (TV), the URL field and REMOVE; ADD FIELD (TV), CANCEL and
+// QUEUE N below. Rust (src/ingest_shell.rs, src/vm/ingest.rs) owns the rows and
+// focus; the fields report every edit back.
+//
+// Each cell is its own focus zone (`rows + row * stride + col`), so Up and Down
+// step through the cells in reading order.
+import { Tokens } from "../tokens.slint";
+import { FocusState } from "focus.slint";
+import { Caption, Eyebrow } from "text.slint";
+import { FilledButton, GhostButton } from "buttons.slint";
+import { TextField } from "text_field.slint";
+import { Dialog } from "dialog.slint";
+
+export struct LinkRow {
+    episode: string,
+    url: string,
+}
+
+// Mirrors the constants in src/vm/ingest.rs.
+export global PasteZones {
+    out property <int> rows: 2000;
+    out property <int> stride: 4;
+    out property <int> footer: 80;
+}
+
+export global PasteState {
+    in property <bool> open;
+    in property <bool> is-tv;
+    // `Severance · Season 2. One file URL per episode.`
+    in property <string> subtitle;
+    in property <[LinkRow]> rows;
+    in property <bool> can-remove;
+    in property <string> queue-label: "QUEUE 0";
+
+    callback episode-edited(row: int, text: string);
+    callback url-edited(row: int, text: string);
+    // Enter in a URL field queues, like the Mac's default button.
+    callback accepted();
+}
+
+// Keeps the focused row of a list in view.
+export global DialogScroll {
+    public pure function offset(scroll: length, viewport: length, content: length, start: length, len: length) -> length {
+        return clamp(
+            (start < scroll || len >= viewport) ? start : ((start + len > scroll + viewport) ? start + len - viewport : scroll),
+            0px,
+            max(0px, content - viewport));
+    }
+}
+
+export component PasteLinksDialog inherits Dialog {
+    property <int> focused-row: FocusState.zone >= PasteZones.rows && FocusState.zone < PasteZones.rows + 1000 ? floor((FocusState.zone - PasteZones.rows) / PasteZones.stride) : -1;
+    property <length> row-pitch: 56px + Tokens.space-xs;
+    property <int> footer-offset: PasteState.is-tv ? 1 : 0;
+
+    label: "PASTE LINKS";
+    title: "Paste direct links";
+    panel-width: 760px;
+
+    changed focused-row => {
+        if root.focused-row >= 0 {
+            list.content-y = -DialogScroll.offset(-list.content-y, list.height, list.content-height, root.focused-row * root.row-pitch, 56px);
+        }
+    }
+
+    Caption {
+        text: PasteState.subtitle;
+        wrap: word-wrap;
+    }
+
+    list := Flickable {
+        height: min(PasteState.rows.length * root.row-pitch, 5 * root.row-pitch);
+        content-height: PasteState.rows.length * root.row-pitch;
+
+        for row[i] in PasteState.rows: HorizontalLayout {
+            x: 0;
+            y: i * root.row-pitch;
+            width: list.width;
+            height: 56px;
+            spacing: Tokens.space-sm;
+
+            if PasteState.is-tv: TextField {
+                width: 96px;
+                text: row.episode;
+                placeholder: "E";
+                input-type: InputType.number;
+                zone: PasteZones.rows + i * PasteZones.stride + 0;
+                edited(text) => {
+                    PasteState.episode-edited(i, text);
+                }
+                accepted => {
+                    PasteState.accepted();
+                }
+            }
+
+            TextField {
+                horizontal-stretch: 1;
+                text: row.url;
+                placeholder: "https://…/episode.mkv";
+                zone: PasteZones.rows + i * PasteZones.stride + 1;
+                edited(text) => {
+                    PasteState.url-edited(i, text);
+                }
+                accepted => {
+                    PasteState.accepted();
+                }
+            }
+
+            GhostButton {
+                text: "REMOVE";
+                opacity: PasteState.can-remove ? 1 : 0.4;
+                zone: PasteState.can-remove ? PasteZones.rows + i * PasteZones.stride + 2 : -1;
+            }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: Tokens.space-md;
+        padding-top: Tokens.space-sm;
+
+        if PasteState.is-tv: GhostButton {
+            text: "ADD FIELD";
+            zone: PasteZones.footer;
+            index: 0;
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+        }
+
+        GhostButton {
+            text: "CANCEL";
+            zone: PasteZones.footer;
+            index: root.footer-offset;
+        }
+
+        FilledButton {
+            text: PasteState.queue-label;
+            zone: PasteZones.footer;
+            index: root.footer-offset + 1;
+        }
+    }
+}

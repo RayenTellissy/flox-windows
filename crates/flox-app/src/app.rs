@@ -40,6 +40,14 @@ use crate::ui::{
     AppWindow, Card, DetailsState, Episode, FocusState, HomeState, Screen, SearchState, Season,
 };
 use crate::vm::{details as dvm, home as hvm, search as svm};
+use crate::vm::{ingest as ivm, library as lvm, queue as qvm};
+
+#[path = "ingest_shell.rs"]
+mod ingest_shell;
+pub use ingest_shell::{
+    FilePicker, FourKHdHub, HubSource, Ingest, JobQueue, LibraryAdmin, NoHub, QueueEvents,
+    SystemPicker,
+};
 
 // ---------------------------------------------------------------------------
 // Services
@@ -362,6 +370,8 @@ struct Graphs {
     home: FocusGraph,
     search: FocusGraph,
     details: FocusGraph,
+    queue: FocusGraph,
+    library: FocusGraph,
     /// Placeholder screens (Queue, Library, Settings, Login, Player).
     other: FocusGraph,
 }
@@ -372,6 +382,8 @@ impl Graphs {
             Screen::Home => &self.home,
             Screen::Search => &self.search,
             Screen::Details => &self.details,
+            Screen::Queue => &self.queue,
+            Screen::Library => &self.library,
             _ => &self.other,
         }
     }
@@ -381,6 +393,8 @@ impl Graphs {
             Screen::Home => &mut self.home,
             Screen::Search => &mut self.search,
             Screen::Details => &mut self.details,
+            Screen::Queue => &mut self.queue,
+            Screen::Library => &mut self.library,
             _ => &mut self.other,
         }
     }
@@ -405,6 +419,7 @@ pub struct Shell {
     search_cards: CardList,
     seasons: Rc<VecModel<Season>>,
     episodes: Rc<VecModel<Episode>>,
+    ingest: ingest_shell::IngestShell,
 }
 
 fn modifiers(control: bool, shift: bool, alt: bool, meta: bool) -> Modifiers {
@@ -431,6 +446,8 @@ impl Shell {
                 home: FocusGraph::with_zones(hvm::zones(0, 0, 0, 0)),
                 search: FocusGraph::with_zones(svm::zones(0, 1)),
                 details: FocusGraph::with_zones(dvm::zones(false, 0, 0)),
+                queue: FocusGraph::with_zones(qvm::zones(&[])),
+                library: FocusGraph::with_zones(lvm::zones(0)),
                 other: FocusGraph::new(),
             }),
             home: RefCell::new(HomeModel {
@@ -452,6 +469,7 @@ impl Shell {
             search_cards: CardList::new(),
             seasons: Rc::new(VecModel::default()),
             episodes: Rc::new(VecModel::default()),
+            ingest: ingest_shell::IngestShell::default(),
         });
         shell.bind(ui);
         shell
@@ -493,6 +511,8 @@ impl Shell {
         search.on_edited(move |text| shell.search_edited(&text, false));
         let shell = self.clone();
         search.on_accepted(move |text| shell.search_edited(&text, true));
+
+        self.bind_ingest(ui);
     }
 
     /// Starts every Home load and the Telegram and settings watchers.
@@ -643,6 +663,9 @@ impl Shell {
 
     /// A key press from the root FocusScope. True when handled.
     pub fn key(self: &Rc<Self>, text: &str, modifiers: Modifiers) -> bool {
+        if let Some(handled) = self.ingest_key(text, modifiers) {
+            return handled;
+        }
         let screen = self.screen();
         if screen == Screen::Search {
             self.update_search_columns();
@@ -698,6 +721,9 @@ impl Shell {
     }
 
     fn back_key(self: &Rc<Self>) {
+        if self.ingest_back() {
+            return;
+        }
         if self.screen() == Screen::Search {
             let in_grid = self.focus().is_some_and(|f| f.zone == svm::GRID);
             let results = self.search_cards.len();
@@ -732,6 +758,22 @@ impl Shell {
                 None
             }
             (Screen::Details, dvm::EPISODES) => self.episode_play(focus.index).map(Route::Player),
+            (Screen::Details, dvm::INGEST) => {
+                self.ingest_bar(focus.index);
+                None
+            }
+            (Screen::Details, zone) if ivm::dialog_zone(zone) => {
+                self.dialog_activate(focus);
+                None
+            }
+            (Screen::Queue, _) => {
+                self.queue_activate(focus);
+                None
+            }
+            (Screen::Library, _) => {
+                self.library_activate(focus);
+                None
+            }
             _ => None,
         };
         if let Some(route) = target {
@@ -771,6 +813,8 @@ impl Shell {
                 let mut d = self.details.borrow_mut();
                 d.generation = d.generation.wrapping_add(1);
                 d.episodes_generation = d.episodes_generation.wrapping_add(1);
+                drop(d);
+                self.ingest_details_closed();
             }
             _ => {}
         }
@@ -800,6 +844,8 @@ impl Shell {
                 }
             }
             Route::Player(request) => tracing::info!("play {request:?}"),
+            Route::Queue => self.open_queue(),
+            Route::Library => self.open_library(fresh),
             _ => {}
         }
         self.sync_focus();
@@ -1195,6 +1241,7 @@ impl Shell {
             m.seasons = seasons;
             m.selected = selected;
         }
+        self.ingest_details_loaded();
         if self.screen() == Screen::Details {
             self.sync_focus();
         }
@@ -1220,6 +1267,7 @@ impl Shell {
             m.episodes.clear();
             (m.route.map(|(id, _, _)| id), m.episodes_generation)
         };
+        self.ingest_season_changed();
         let Some(id) = id else {
             return;
         };
@@ -1296,6 +1344,7 @@ impl Shell {
         self.details.borrow_mut().episodes = episodes;
         self.episodes.set_vec(rows);
         self.set_len(Screen::Details, dvm::EPISODES, len);
+        self.ingest_episodes_loaded();
         for (index, path) in stills {
             self.load_image(&path, ImageSize::W300, move |shell, image| {
                 if shell.details.borrow().episodes_generation != generation {
@@ -1396,6 +1445,7 @@ pub fn run(ctx: AppContext) -> anyhow::Result<()> {
         ctx.services.clone(),
         Exec::Live(ctx.runtime.handle().clone()),
     );
+    shell.set_ingest(Ingest::from_context(&ctx));
     shell.start();
     ui.show()?;
     apply_ui_scale(&ui, ctx.settings.get().ui_scale);

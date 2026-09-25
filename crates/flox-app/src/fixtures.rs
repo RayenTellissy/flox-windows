@@ -187,6 +187,69 @@ impl LibrarySource for FixtureLibrarySource {
     }
 }
 
+/// An in-memory job list for the ingest screens without Telegram or ffmpeg: jobs
+/// are listed and stay as they are (nothing runs).
+pub struct FixtureQueue {
+    views: tokio::sync::watch::Sender<Vec<flox_rip::job::JobView>>,
+}
+
+impl Default for FixtureQueue {
+    fn default() -> Self {
+        Self::new(Vec::new())
+    }
+}
+
+impl FixtureQueue {
+    /// A list seeded with `views` (any states).
+    pub fn new(views: Vec<flox_rip::job::JobView>) -> Self {
+        let (views, _) = tokio::sync::watch::channel(views);
+        Self { views }
+    }
+
+    fn edit(&self, f: impl FnOnce(&mut Vec<flox_rip::job::JobView>)) {
+        self.views.send_modify(f);
+    }
+}
+
+impl crate::app::JobQueue for FixtureQueue {
+    fn add(&self, jobs: Vec<flox_rip::job::Job>) {
+        self.edit(|v| v.extend(jobs.into_iter().map(flox_rip::job::JobView::queued)));
+    }
+
+    fn cancel(&self, id: uuid::Uuid) {
+        self.edit(|v| v.retain(|j| j.job.id != id));
+    }
+
+    fn retry(&self, id: uuid::Uuid) {
+        self.edit(|v| {
+            for j in v.iter_mut().filter(|j| j.job.id == id) {
+                j.state = flox_rip::job::JobState::Queued;
+                j.detail.clear();
+                j.progress = None;
+            }
+        });
+    }
+
+    fn remove(&self, id: uuid::Uuid) {
+        self.edit(|v| v.retain(|j| j.job.id != id));
+    }
+
+    fn clear_finished(&self) {
+        self.edit(|v| {
+            v.retain(|j| {
+                !matches!(
+                    j.state,
+                    flox_rip::job::JobState::Done | flox_rip::job::JobState::Cancelled
+                )
+            })
+        });
+    }
+
+    fn snapshot(&self) -> tokio::sync::watch::Receiver<Vec<flox_rip::job::JobView>> {
+        self.views.subscribe()
+    }
+}
+
 /// Synthesized posters and stills.
 pub struct FixtureImages;
 

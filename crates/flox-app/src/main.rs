@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Context;
-use flox_app::app::{AppContext, Services, Telegram};
+use flox_app::app::{AppContext, QueueEvents, Services, Telegram};
 use flox_app::fixtures::{
     FixtureCatalog, FixtureImages, FixtureLibrary, FixtureLibrarySource, Fixtures,
 };
@@ -21,6 +21,8 @@ use flox_core::progress::ProgressStore;
 use flox_core::settings::{Settings, SettingsStore};
 use flox_core::tmdb::Tmdb;
 use flox_core::tools::{self, Tool};
+use flox_rip::queue::{Queue, QueueDeps};
+use flox_rip::tools::ToolPaths;
 use flox_sys::dirs::SystemDirs;
 use flox_td::auth::Auth;
 use flox_td::client::{TdClient, TdParams};
@@ -153,6 +155,50 @@ fn start_telegram(
     )
 }
 
+/// The upload queue, when Telegram is running and ffmpeg and ffprobe resolve. Jobs
+/// work under `%TEMP%\flox\<uuid>`; VidLink pages are sniffed with WebView2.
+fn start_queue(
+    runtime: &tokio::runtime::Runtime,
+    paths: &AppPaths,
+    settings: &SettingsStore,
+    td: Option<&Arc<TdClient>>,
+) -> Option<Arc<Queue>> {
+    let td = td?;
+    let s = settings.get();
+    let app_dir = SystemDirs.app_dir();
+    let path_env = std::env::var_os("PATH");
+    let find = |tool: Tool, over: Option<&std::path::Path>| {
+        let found = tools::resolve(tool, &app_dir, path_env.as_deref(), over);
+        if found.is_none() {
+            tracing::warn!("{} not found", tool.file_name());
+        }
+        found
+    };
+    let ffmpeg = find(Tool::Ffmpeg, s.ffmpeg_path.as_deref());
+    let ffprobe = find(Tool::Ffprobe, s.ffmpeg_path.as_deref());
+    let ytdlp = find(Tool::YtDlp, s.ytdlp_path.as_deref());
+    let (Some(ffmpeg), Some(ffprobe)) = (ffmpeg, ffprobe) else {
+        tracing::warn!("the upload queue is off until ffmpeg and ffprobe are found");
+        return None;
+    };
+    let transport: Arc<dyn TdTransport> = td.clone();
+    let _entered = runtime.enter();
+    Some(Queue::new(QueueDeps {
+        td: transport,
+        sniffer: Some(flox_web::platform_sniffer(
+            flox_web::assets::ScriptOptions::default(),
+        )),
+        tools: ToolPaths {
+            ffmpeg,
+            ffprobe,
+            ytdlp,
+        },
+        temp_root: paths.temp.clone(),
+        settings: settings.clone(),
+        hooks: Arc::new(QueueEvents::default()),
+    }))
+}
+
 /// Offline services from a fixture file. Watch history is seeded into a scratch
 /// file so the real one is never touched.
 fn fixture_services(
@@ -221,6 +267,7 @@ fn main() -> anyhow::Result<()> {
         }
     };
 
+    let queue = start_queue(&runtime, &paths, &settings, td.as_ref());
     flox_app::run(AppContext {
         runtime,
         paths,
@@ -229,7 +276,7 @@ fn main() -> anyhow::Result<()> {
         services: Arc::new(services),
         td,
         library,
-        queue: None,
+        queue,
         player_lib: None,
     })
 }

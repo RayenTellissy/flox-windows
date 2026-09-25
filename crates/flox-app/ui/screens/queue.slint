@@ -1,7 +1,172 @@
-import { ScreenPlaceholder } from "placeholder.slint";
+// Queue (Mac QueueView): one card per job with its label, state (DONE in terminal
+// green), detail line and a 1 px progress line while downloading or uploading, and
+// its actions (RETRY + REMOVE when failed, REMOVE when done or cancelled, CANCEL
+// otherwise). The footer reads WORKING or IDLE and holds CLEAR FINISHED. Data and
+// focus come from Rust (src/ingest_shell.rs, src/vm/queue.rs); each job row is one
+// focus zone (`rows + i`) holding its action buttons.
+import { Tokens } from "../tokens.slint";
+import {
+    FocusState, Eyebrow, Caption, Heading, GhostButton, ProgressLine, StateStamp
+} from "../components/all.slint";
+import { Reveal } from "home.slint";
 
-export component QueueScreen inherits ScreenPlaceholder {
-    eyebrow: "QUEUE";
-    heading: "Queue";
-    caption: "Nothing queued.";
+export struct QueueRow {
+    label: string,
+    state: string,
+    // 0 normal (secondary), 1 success (terminal green), 2 alert (primary).
+    tone: int,
+    detail: string,
+    // 0..1 draws the progress line; negative hides it.
+    progress: float,
+    actions: [string],
+}
+
+// Mirrors the constants in src/vm/queue.rs.
+export global QueueZones {
+    out property <int> rows: 1000;
+    out property <int> footer: 30;
+}
+
+export global QueueState {
+    in property <[QueueRow]> rows;
+    in property <string> footer: "IDLE";
+    in-out property <length> scroll-y;
+}
+
+component JobCard inherits Rectangle {
+    in property <QueueRow> job;
+    in property <int> zone;
+    property <bool> active: FocusState.zone == root.zone;
+
+    background: Tokens.card;
+    border-width: Tokens.hairline-width;
+    border-color: root.active ? Tokens.hairline-strong : Tokens.hairline;
+
+    VerticalLayout {
+        HorizontalLayout {
+            padding: Tokens.space-md;
+            spacing: Tokens.space-lg;
+
+            VerticalLayout {
+                alignment: center;
+                spacing: Tokens.space-xxs;
+                horizontal-stretch: 1;
+
+                Caption {
+                    text: root.job.label;
+                    color: Tokens.text-primary;
+                    overflow: elide;
+                }
+
+                HorizontalLayout {
+                    spacing: Tokens.space-xs;
+
+                    Eyebrow {
+                        text: root.job.state;
+                        horizontal-stretch: 0;
+                        color: root.job.tone == 1 ? Tokens.terminal-green : root.job.tone == 2 ? Tokens.text-primary : Tokens.text-secondary;
+                    }
+
+                    if root.job.detail != "": Eyebrow {
+                        text: "· " + root.job.detail;
+                        color: Tokens.text-muted;
+                        horizontal-stretch: 1;
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: Tokens.space-sm;
+                alignment: end;
+
+                for action[a] in root.job.actions: GhostButton {
+                    text: action;
+                    zone: root.zone;
+                    index: a;
+                }
+            }
+        }
+
+        if root.job.progress >= 0: ProgressLine {
+            fraction: root.job.progress;
+        }
+    }
+}
+
+export component QueueScreen inherits Rectangle {
+    property <length> row-height: 96px;
+    property <length> pitch: root.row-height + Tokens.space-sm;
+    property <int> focused-row: FocusState.zone >= QueueZones.rows ? FocusState.zone - QueueZones.rows : -1;
+
+    background: Tokens.canvas;
+
+    changed focused-row => {
+        if root.focused-row >= 0 {
+            list.content-y = -Reveal.offset(-list.content-y, list.height, list.content-height, root.focused-row * root.pitch, root.row-height);
+        }
+    }
+
+    VerticalLayout {
+        padding: Tokens.screen-padding;
+        spacing: Tokens.space-lg;
+
+        VerticalLayout {
+            spacing: Tokens.space-xs;
+
+            Eyebrow {
+                text: "QUEUE";
+            }
+
+            Heading {
+                text: "Uploads";
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+
+            list := Flickable {
+                width: 100%;
+                height: 100%;
+                content-height: QueueState.rows.length * root.pitch;
+                content-y <=> QueueState.scroll-y;
+
+                for row[i] in QueueState.rows: JobCard {
+                    x: 0;
+                    y: i * root.pitch;
+                    width: list.width;
+                    height: root.row-height;
+                    job: row;
+                    zone: QueueZones.rows + i;
+                }
+            }
+
+            if QueueState.rows.length == 0: StateStamp {
+                width: 100%;
+                height: 100%;
+                text: "NOTHING QUEUED";
+            }
+        }
+
+        Rectangle {
+            height: Tokens.hairline-width;
+            background: Tokens.hairline;
+        }
+
+        HorizontalLayout {
+            spacing: Tokens.space-md;
+
+            Eyebrow {
+                text: QueueState.footer;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+
+            GhostButton {
+                text: "CLEAR FINISHED";
+                zone: QueueZones.footer;
+                index: 0;
+            }
+        }
+    }
 }

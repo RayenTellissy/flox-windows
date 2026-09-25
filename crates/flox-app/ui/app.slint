@@ -11,14 +11,20 @@ import { FocusRoot, TopBar } from "components/all.slint";
 import { HomeScreen, HomeState, HomeZones, Card } from "screens/home.slint";
 import { SearchScreen, SearchState, SearchZones } from "screens/search.slint";
 import { DetailsScreen, DetailsState, DetailsZones, Season, Episode } from "screens/details.slint";
-import { QueueScreen } from "screens/queue.slint";
-import { LibraryScreen } from "screens/library.slint";
+import { QueueScreen, QueueState, QueueZones, QueueRow } from "screens/queue.slint";
+import { LibraryScreen, LibraryState, LibraryZones, LibraryGroup, LibraryEntry } from "screens/library.slint";
+import { IngestBar } from "screens/details.slint";
+import { PasteLinksDialog, PasteState, LinkRow } from "components/paste_links.slint";
+import { LocalFilesDialog, FilesState, FileRow } from "components/local_files.slint";
+import { HubVariantsDialog, HubState, HubRow } from "components/hub_variants.slint";
 import { SettingsScreen } from "screens/settings.slint";
 import { LoginScreen } from "screens/login.slint";
 import { PlayerScreen } from "screens/player.slint";
 
 export { FocusState } from "components/focus.slint";
 export { HomeState, HomeZones, Card, SearchState, SearchZones, DetailsState, DetailsZones, Season, Episode }
+export { QueueState, QueueZones, QueueRow, LibraryState, LibraryZones, LibraryGroup, LibraryEntry }
+export { IngestBar, PasteState, LinkRow, FilesState, FileRow, HubState, HubRow }
 
 export enum Screen {
     home,
@@ -111,6 +117,21 @@ export component AppWindow inherits Window {
             height: 100%;
         }
         if root.screen == Screen.player: PlayerScreen {
+            width: 100%;
+            height: 100%;
+        }
+
+        // The Details ingest dialogs, over the screen (they stay open underneath
+        // Search or Settings opened with a shortcut).
+        if root.screen == Screen.details && PasteState.open: PasteLinksDialog {
+            width: 100%;
+            height: 100%;
+        }
+        if root.screen == Screen.details && FilesState.open: LocalFilesDialog {
+            width: 100%;
+            height: 100%;
+        }
+        if root.screen == Screen.details && HubState.open: HubVariantsDialog {
             width: 100%;
             height: 100%;
         }
