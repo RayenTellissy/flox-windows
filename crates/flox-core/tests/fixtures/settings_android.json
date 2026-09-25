@@ -1,0 +1,21 @@
+{
+  "audio_language": "ja",
+  "subtitles_enabled": true,
+  "subtitle_language": "en",
+  "subtitle_size": "LARGE",
+  "autoplay_next": false,
+  "seek_step_seconds": 30,
+  "loudness_boost": true,
+  "loudness_gain_db": 6.5,
+  "overlay_hide_ms": 6000,
+  "resume_mode": "ASK",
+  "finished_threshold_percent": 90,
+  "playback_speed": 1.25,
+  "aspect_mode": "ZOOM",
+  "library_sort": "SIZE",
+  "telegram_channel": "Movies Vault",
+  "continue_watching_limit": 25,
+  "quality": "2160p DV",
+  "future_setting": { "nested": [1, 2, 3] },
+  "legacy_flag": "keep me"
+}

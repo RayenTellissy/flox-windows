@@ -1,0 +1,23 @@
+{
+  "audio_language": "",
+  "subtitle_language": "   ",
+  "subtitle_size": "HUGE",
+  "autoplay_next": "yes",
+  "seek_step_seconds": 7,
+  "loudness_gain_db": 40,
+  "overlay_hide_ms": -50,
+  "resume_mode": "NEVER",
+  "finished_threshold_percent": 96.7,
+  "playback_speed": 1.4,
+  "aspect_mode": null,
+  "library_sort": "TITLE",
+  "telegram_channel": "  ",
+  "continue_watching_limit": 1000,
+  "quality": "",
+  "ui_scale": 2,
+  "tmdb_api_key": "",
+  "telegram_api_id": 0,
+  "telegram_api_hash": "",
+  "ffmpeg_path": "",
+  "libmpv_path": "C:\\mpv\\libmpv-2.dll"
+}
