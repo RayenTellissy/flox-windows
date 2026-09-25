@@ -1,0 +1,88 @@
+// Logical focus, drawn by the components and driven from Rust (src/focus.rs).
+//
+// - FocusState holds the focused (zone, index). Rust writes it after every move.
+// - A focusable component takes `zone` / `index` and is focused when they equal
+//   FocusState's. `force-focus` draws the ring regardless (the gallery uses it).
+// - FocusRoot is the root key sink. It keeps Slint's real focus unless a TextField
+//   has it, and forwards every key press to Rust through capture-key-pressed.
+// - FocusArea reports pointer moves, clicks and right clicks to Rust.
+import { Tokens } from "../tokens.slint";
+
+export global FocusState {
+    // The focused item. -1 means nothing is focused.
+    in-out property <int> zone: -1;
+    in-out property <int> index: -1;
+    // True while the focused item is a TextField (FocusGraph::editing).
+    in-out property <bool> editing: false;
+
+    // The pointer moved over an item (not merely entered it).
+    callback hovered(zone: int, index: int);
+    // The item was clicked with the primary button.
+    callback clicked(zone: int, index: int);
+    // The item was right-clicked (MENU).
+    callback menu(zone: int, index: int);
+}
+
+// The root key sink. Make it the window's first child, filling the window, with the
+// screen inside it. `key` returns true when Rust handled the key.
+export component FocusRoot inherits FocusScope {
+    callback key(text: string, control: bool, shift: bool, alt: bool, meta: bool, repeat: bool) -> bool;
+
+    property <bool> editing: FocusState.editing;
+
+    // Leaving a text field hands the real focus back to the root.
+    changed editing => {
+        if !self.editing {
+            self.focus();
+        }
+    }
+
+    init => {
+        self.focus();
+    }
+
+    // Runs before the focused element (a TextInput included) sees the key: Slint
+    // delivers the capture phase from the window down to the focus item.
+    capture-key-pressed(event) => {
+        if root.key(event.text, event.modifiers.control, event.modifiers.shift, event.modifiers.alt, event.modifiers.meta, event.repeat) {
+            return accept;
+        }
+        reject
+    }
+}
+
+// Pointer input for one focusable item.
+export component FocusArea inherits TouchArea {
+    in property <int> zone: -1;
+    in property <int> index: 0;
+
+    pointer-event(event) => {
+        if root.zone >= 0 {
+            if event.kind == PointerEventKind.move {
+                FocusState.hovered(root.zone, root.index);
+            } else if event.kind == PointerEventKind.down && event.button == PointerEventButton.right {
+                FocusState.menu(root.zone, root.index);
+            }
+        }
+    }
+
+    clicked => {
+        if root.zone >= 0 {
+            FocusState.clicked(root.zone, root.index);
+        }
+    }
+}
+
+// A square outline over its parent: the 2 px ring when `focused`, otherwise the
+// `rest` hairline (transparent for none).
+export component FocusRing inherits Rectangle {
+    in property <bool> focused;
+    in property <color> ring: Tokens.focus-ring;
+    in property <color> rest: transparent;
+    in property <length> rest-width: Tokens.hairline-width;
+
+    border-radius: 0;
+    border-width: root.focused ? Tokens.focus-width : root.rest-width;
+    border-color: root.focused ? root.ring : root.rest;
+    background: transparent;
+}

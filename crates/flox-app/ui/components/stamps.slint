@@ -1,0 +1,28 @@
+// Text-only states: the centred state stamp (no spinners, no skeletons) and the
+// player hint. Both are mono eyebrows in muted text; words are uppercased in Rust.
+import { Tokens } from "../tokens.slint";
+import { Eyebrow } from "text.slint";
+
+// LOADING, NO RESULTS, REQUEST FAILED, PLAYBACK FAILED. Centred in its area.
+export component StateStamp inherits Rectangle {
+    in property <string> text;
+
+    VerticalLayout {
+        padding: Tokens.space-xl;
+        alignment: center;
+
+        Eyebrow {
+            text: root.text;
+            color: Tokens.text-muted;
+            horizontal-alignment: center;
+        }
+    }
+}
+
+// Bottom-right player hint (`+10 S`, `SUBTITLES OFF`). The screen anchors it and
+// clears `text` after 2.5 s; an empty hint is hidden.
+export component Hint inherits Eyebrow {
+    color: Tokens.text-muted;
+    horizontal-alignment: right;
+    visible: self.text != "";
+}

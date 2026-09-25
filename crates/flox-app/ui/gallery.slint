@@ -1,0 +1,352 @@
+// Every design-system component on one 1280×720 page, for review and for the
+// software-renderer snapshot (tests/snapshots.rs). examples/gallery.rs runs it with
+// the Rust focus engine: arrows, Enter, Esc, mouse hover and click.
+//
+// `forced` draws the focused variant of one item per component (the snapshot);
+// with it off, only FocusState's item is focused (the interactive example).
+import "../../../assets/fonts/Geist-Regular.ttf";
+import "../../../assets/fonts/Geist-Medium.ttf";
+import "../../../assets/fonts/GeistMono-Regular.ttf";
+import "../../../assets/fonts/GeistMono-Medium.ttf";
+
+import { Tokens } from "tokens.slint";
+import {
+    FocusState, FocusRoot, Eyebrow, Caption, FilledButton, GhostButton, SeasonPill, IconButton,
+    ProgressLine, StateStamp, Hint, PosterCard, Row, EpisodeRow, ListRow, TextField, DialogPanel,
+    SeekBar, TopBar, TopBarItem
+} from "components/all.slint";
+
+export { FocusState }
+
+// Zone ids, in the order the example declares them to the FocusGraph.
+export global GalleryZones {
+    out property <int> top-bar: 0;
+    out property <int> posters: 1;
+    out property <int> episodes: 2;
+    out property <int> filled: 3;
+    out property <int> ghost: 4;
+    out property <int> seasons: 5;
+    out property <int> search: 6;
+    out property <int> settings: 7;
+    out property <int> dialog: 8;
+    out property <int> seek: 9;
+    out property <int> player: 10;
+    out property <int> key-field: 11;
+}
+
+export component Gallery inherits Window {
+    in property <bool> forced: true;
+    in-out property <length> posters-viewport-x;
+    out property <length> posters-viewport-width: posters.viewport-width;
+    in-out property <string> search-text: "Dune";
+    in property <string> hint: "+10 S";
+
+    callback key(text: string, control: bool, shift: bool, alt: bool, meta: bool, repeat: bool) -> bool;
+
+    title: "Flox components";
+    width: 1280px;
+    height: 720px;
+    background: Tokens.canvas;
+    default-font-family: Tokens.font-sans;
+    default-font-size: Tokens.body-size;
+
+    FocusRoot {
+        width: 100%;
+        height: 100%;
+        key(text, control, shift, alt, meta, repeat) => {
+            root.key(text, control, shift, alt, meta, repeat)
+        }
+
+        TopBar {
+            x: 32px;
+            y: 24px;
+            width: 1216px;
+            height: 48px;
+            zone: GalleryZones.top-bar;
+            force-index: root.forced ? 0 : -1;
+            items: [
+                { label: "SEARCH", icon: @image-url("../../../assets/icons/ic_search.png") },
+                { label: "QUEUE (2)" },
+                { label: "LIBRARY" },
+                { label: "SETTINGS" },
+            ];
+            status-label: "TELEGRAM";
+            status-ready: true;
+        }
+
+        // Left column: a poster row and the ingest episode list.
+        posters := Row {
+            x: 32px;
+            y: 88px;
+            width: 528px;
+            label: "CONTINUE WATCHING";
+            icon: @image-url("../../../assets/icons/ic_continue.png");
+            viewport-x <=> root.posters-viewport-x;
+
+            PosterCard {
+                title: "Severance";
+                meta: "2022 · TV";
+                progress: 0.42;
+                zone: GalleryZones.posters;
+                index: 0;
+            }
+            PosterCard {
+                title: "Dune: Part Two";
+                meta: "2024 · MOVIE";
+                zone: GalleryZones.posters;
+                index: 1;
+                force-focus: root.forced;
+            }
+            PosterCard {
+                title: "The Bear";
+                meta: "2022 · TV";
+                zone: GalleryZones.posters;
+                index: 2;
+            }
+            PosterCard {
+                title: "Arrival";
+                meta: "2016 · MOVIE";
+                zone: GalleryZones.posters;
+                index: 3;
+            }
+            PosterCard {
+                title: "Shogun";
+                meta: "2024 · TV";
+                zone: GalleryZones.posters;
+                index: 4;
+            }
+        }
+
+        VerticalLayout {
+            x: 32px;
+            y: 450px;
+            width: 528px;
+            spacing: Tokens.space-xs;
+            alignment: start;
+
+            EpisodeRow {
+                meta: "E01 · 57 MIN · LIBRARY · 2160P DV";
+                name: "Good News About Hell";
+                overview: "Mark is promoted to chief.";
+                selectable: true;
+                selected: true;
+                zone: GalleryZones.episodes;
+                index: 0;
+                force-focus: root.forced;
+            }
+            EpisodeRow {
+                meta: "E02 · 53 MIN";
+                name: "Half Loop";
+                overview: "Helly tries to quit and fails.";
+                selectable: true;
+                selected: false;
+                zone: GalleryZones.episodes;
+                index: 1;
+            }
+        }
+
+        // Middle column: buttons, pills, inputs, list rows, a dialog.
+        VerticalLayout {
+            x: 592px;
+            y: 88px;
+            width: 360px;
+            spacing: Tokens.space-sm;
+            alignment: start;
+
+            HorizontalLayout {
+                spacing: Tokens.space-md;
+                alignment: start;
+
+                FilledButton {
+                    text: "PLAY";
+                    icon: @image-url("../../../assets/icons/ic_play.png");
+                    zone: GalleryZones.filled;
+                    index: 0;
+                    force-focus: root.forced;
+                }
+                FilledButton {
+                    text: "RESUME S2 E3";
+                    icon: @image-url("../../../assets/icons/ic_continue.png");
+                    zone: GalleryZones.filled;
+                    index: 1;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: Tokens.space-md;
+                alignment: start;
+
+                GhostButton {
+                    text: "PASTE LINKS";
+                    zone: GalleryZones.ghost;
+                    index: 0;
+                }
+                GhostButton {
+                    text: "LOCAL FILES";
+                    zone: GalleryZones.ghost;
+                    index: 1;
+                    force-focus: root.forced;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: Tokens.space-xs;
+                alignment: start;
+
+                SeasonPill {
+                    text: "SEASON 1";
+                    selected: true;
+                    zone: GalleryZones.seasons;
+                    index: 0;
+                }
+                SeasonPill {
+                    text: "SEASON 2";
+                    zone: GalleryZones.seasons;
+                    index: 1;
+                    force-focus: root.forced;
+                }
+            }
+
+            TextField {
+                text <=> root.search-text;
+                placeholder: "Search";
+                zone: GalleryZones.search;
+                index: 0;
+                force-focus: root.forced;
+            }
+
+            VerticalLayout {
+                spacing: Tokens.space-xxs;
+                alignment: start;
+
+                ListRow {
+                    label: "Default quality";
+                    value: "HIGHEST";
+                    zone: GalleryZones.settings;
+                    index: 0;
+                    force-focus: root.forced;
+                }
+                ListRow {
+                    label: "Dune: Part Two";
+                    value: "DOWNLOADING";
+                    detail: "MOVIE · 2160P HEVC · 4.1 OF 11.8 GB";
+                    progress: 0.35;
+                    zone: GalleryZones.settings;
+                    index: 1;
+                }
+            }
+
+            DialogPanel {
+                label: "SIGN OUT";
+
+                Caption {
+                    text: "Sign out of Telegram on this PC?";
+                    wrap: word-wrap;
+                }
+
+                HorizontalLayout {
+                    spacing: Tokens.space-md;
+                    alignment: start;
+
+                    FilledButton {
+                        text: "SIGN OUT";
+                        zone: GalleryZones.dialog;
+                        index: 0;
+                    }
+                    GhostButton {
+                        text: "CANCEL";
+                        zone: GalleryZones.dialog;
+                        index: 1;
+                    }
+                }
+            }
+        }
+
+        // Right column: the player controls on pure black, states and a field.
+        Rectangle {
+            x: 976px;
+            y: 88px;
+            width: 272px;
+            height: 220px;
+            background: Tokens.pure-black;
+
+            VerticalLayout {
+                padding: Tokens.space-md;
+                spacing: Tokens.space-xs;
+                alignment: start;
+
+                Eyebrow {
+                    text: "S1 · E3";
+                }
+
+                SeekBar {
+                    position: 1444;
+                    buffered: 1900;
+                    duration: 2890;
+                    zone: GalleryZones.seek;
+                    index: 0;
+                    force-focus: root.forced;
+                }
+
+                HorizontalLayout {
+                    alignment: space-between;
+
+                    IconButton {
+                        icon: @image-url("../../../assets/icons/ic_player_rewind.png");
+                        zone: GalleryZones.player;
+                        index: 0;
+                    }
+                    IconButton {
+                        icon: @image-url("../../../assets/icons/ic_player_pause.png");
+                        zone: GalleryZones.player;
+                        index: 1;
+                        force-focus: root.forced;
+                    }
+                    IconButton {
+                        icon: @image-url("../../../assets/icons/ic_player_forward.png");
+                        zone: GalleryZones.player;
+                        index: 2;
+                    }
+                }
+
+                HorizontalLayout {
+                    Eyebrow {
+                        text: "24:04 / 48:10";
+                        horizontal-stretch: 1;
+                    }
+                    Hint {
+                        text: root.hint;
+                    }
+                }
+            }
+        }
+
+        VerticalLayout {
+            x: 976px;
+            y: 324px;
+            width: 272px;
+            spacing: Tokens.space-md;
+            alignment: start;
+
+            Rectangle {
+                border-width: Tokens.hairline-width;
+                border-color: Tokens.hairline;
+
+                StateStamp {
+                    width: 100%;
+                    text: "NO RESULTS";
+                }
+            }
+
+            ProgressLine {
+                fraction: 0.6;
+            }
+
+            TextField {
+                placeholder: "TMDB API key";
+                zone: GalleryZones.key-field;
+                index: 0;
+            }
+        }
+    }
+}

@@ -1,0 +1,97 @@
+// A single-line input: card surface, 1 px hairline-strong, Geist 22, square, and the
+// 2 px ring when focused.
+//
+// Text fields are the only elements that take real Slint focus. When the logical
+// focus (FocusState) lands on the field, it focuses its TextInput. Key presses still
+// reach FocusRoot's capture-key-pressed first, so Rust takes Up/Down/Esc and lets the
+// rest (typing, Left/Right, Backspace, Enter) through. A click that puts the caret in
+// the field reports it to Rust as a click on (zone, index).
+import { Tokens } from "../tokens.slint";
+import { FocusState, FocusArea, FocusRing } from "focus.slint";
+
+export component TextField inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <string> placeholder;
+    in property <InputType> input-type: InputType.text;
+    in property <int> zone: -1;
+    in property <int> index: 0;
+    in property <bool> force-focus;
+    out property <bool> focused: root.force-focus || root.logical-focus;
+    out property <bool> has-input-focus: input.has-focus;
+
+    callback edited(text: string);
+    callback accepted(text: string);
+
+    property <bool> logical-focus: root.zone >= 0 && FocusState.zone == root.zone && FocusState.index == root.index;
+
+    changed logical-focus => {
+        if root.logical-focus {
+            input.focus();
+        }
+    }
+
+    changed has-input-focus => {
+        if root.has-input-focus && !root.logical-focus && root.zone >= 0 {
+            FocusState.clicked(root.zone, root.index);
+        }
+    }
+
+    init => {
+        if root.logical-focus {
+            input.focus();
+        }
+    }
+
+    min-height: 56px;
+    background: Tokens.card;
+    border-radius: 0;
+
+    FocusArea {
+        zone: root.zone;
+        index: root.index;
+    }
+
+    HorizontalLayout {
+        padding-left: Tokens.space-md;
+        padding-right: Tokens.space-md;
+        padding-top: Tokens.space-sm;
+        padding-bottom: Tokens.space-sm;
+
+        Rectangle {
+            if input.text == "": Text {
+                width: 100%;
+                height: 100%;
+                text: root.placeholder;
+                font-family: Tokens.font-sans;
+                font-size: Tokens.body-size;
+                color: Tokens.text-muted;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            input := TextInput {
+                width: 100%;
+                height: 100%;
+                font-family: Tokens.font-sans;
+                font-size: Tokens.body-size;
+                color: Tokens.text-primary;
+                selection-background-color: Tokens.hairline-strong;
+                selection-foreground-color: Tokens.text-primary;
+                vertical-alignment: center;
+                single-line: true;
+                input-type: root.input-type;
+                edited => {
+                    root.edited(self.text);
+                }
+                accepted => {
+                    root.accepted(self.text);
+                }
+            }
+        }
+    }
+
+    FocusRing {
+        focused: root.focused;
+        rest: Tokens.hairline-strong;
+    }
+}

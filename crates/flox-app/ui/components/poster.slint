@@ -1,0 +1,70 @@
+// A poster card: card surface, poster edge to edge, an optional 2 px progress line,
+// then the title (Body, one line) and a mono `YEAR · TYPE` line. The 2 px ring
+// replaces the hairline when focused; nothing scales.
+import { Tokens } from "../tokens.slint";
+import { FocusState, FocusArea, FocusRing } from "focus.slint";
+import { Body, Eyebrow } from "text.slint";
+import { ProgressLine } from "progress.slint";
+
+export component PosterCard inherits Rectangle {
+    in property <image> poster;
+    in property <string> title;
+    in property <string> meta;
+    // 0..1 draws the progress line (continue watching); negative hides it.
+    in property <float> progress: -1;
+    in property <int> zone: -1;
+    in property <int> index: 0;
+    in property <bool> force-focus;
+    out property <bool> focused: root.force-focus || (root.zone >= 0 && FocusState.zone == root.zone && FocusState.index == root.index);
+
+    width: Tokens.poster-width;
+    background: Tokens.card;
+    border-radius: 0;
+
+    VerticalLayout {
+        Rectangle {
+            height: Tokens.poster-height;
+            // Empty until the image loads: one tonal step above the card.
+            background: Tokens.hairline;
+            clip: true;
+
+            Image {
+                source: root.poster;
+                width: 100%;
+                height: 100%;
+                image-fit: cover;
+            }
+        }
+
+        if root.progress >= 0: ProgressLine {
+            fraction: root.progress;
+            thickness: 2px;
+            track: false;
+        }
+
+        VerticalLayout {
+            padding: Tokens.space-xs;
+            spacing: Tokens.space-xxs;
+
+            Body {
+                text: root.title;
+                wrap: no-wrap;
+                overflow: elide;
+            }
+
+            Eyebrow {
+                text: root.meta;
+            }
+        }
+    }
+
+    FocusArea {
+        zone: root.zone;
+        index: root.index;
+    }
+
+    FocusRing {
+        focused: root.focused;
+        rest: Tokens.hairline;
+    }
+}

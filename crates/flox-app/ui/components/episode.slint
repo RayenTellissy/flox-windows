@@ -1,0 +1,101 @@
+// An episode in the Details list: 224×126 still, then `E01 · 42 MIN [· LIBRARY …]`,
+// the name and two lines of overview. In ingest mode (`selectable`) a square mark
+// leads the row: filled when selected (■), hairline outline when not (□).
+import { Tokens } from "../tokens.slint";
+import { FocusState, FocusArea, FocusRing } from "focus.slint";
+import { Body, Caption, Eyebrow } from "text.slint";
+
+// The ingest selection mark, drawn as a square so it never depends on a glyph.
+export component SelectionMark inherits Rectangle {
+    in property <bool> selected;
+
+    width: 14px;
+    height: 14px;
+    border-radius: 0;
+    background: root.selected ? Tokens.inverted : transparent;
+    border-width: root.selected ? 0 : Tokens.hairline-width;
+    border-color: Tokens.hairline-strong;
+}
+
+export component EpisodeRow inherits Rectangle {
+    in property <image> still;
+    in property <string> meta;
+    in property <string> name;
+    in property <string> overview;
+    in property <bool> selectable;
+    in property <bool> selected;
+    in property <int> zone: -1;
+    in property <int> index: 0;
+    in property <bool> force-focus;
+    out property <bool> focused: root.force-focus || (root.zone >= 0 && FocusState.zone == root.zone && FocusState.index == root.index);
+
+    background: Tokens.card;
+    border-radius: 0;
+
+    HorizontalLayout {
+        alignment: start;
+
+        if root.selectable: VerticalLayout {
+            padding-left: Tokens.space-md;
+            padding-right: Tokens.space-md;
+            alignment: center;
+
+            SelectionMark {
+                selected: root.selected;
+            }
+        }
+
+        VerticalLayout {
+            alignment: start;
+
+            Rectangle {
+                width: Tokens.still-width;
+                height: Tokens.still-height;
+                // Empty until the image loads: one tonal step above the card.
+                background: Tokens.hairline;
+                clip: true;
+
+                Image {
+                    source: root.still;
+                    width: 100%;
+                    height: 100%;
+                    image-fit: cover;
+                }
+            }
+        }
+
+        VerticalLayout {
+            padding: Tokens.space-md;
+            spacing: Tokens.space-xxs;
+            alignment: start;
+            horizontal-stretch: 1;
+
+            Eyebrow {
+                text: root.meta;
+            }
+
+            Body {
+                text: root.name;
+                wrap: no-wrap;
+                overflow: elide;
+            }
+
+            if root.overview != "": Caption {
+                text: root.overview;
+                wrap: word-wrap;
+                overflow: elide;
+                max-height: Tokens.caption-size * 2.5;
+            }
+        }
+    }
+
+    FocusArea {
+        zone: root.zone;
+        index: root.index;
+    }
+
+    FocusRing {
+        focused: root.focused;
+        rest: Tokens.hairline;
+    }
+}

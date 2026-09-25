@@ -1,0 +1,145 @@
+// Square buttons: filled (inverted surface, terminal-green ring), ghost (hairline
+// strong border, white ring), season pill (a ghost button that can be selected) and
+// the player's 72 px icon button. Labels are uppercased in Rust.
+import { Tokens } from "../tokens.slint";
+import { FocusState, FocusArea, FocusRing } from "focus.slint";
+
+// The button label: Geist Medium 18, +0.04em.
+component ButtonLabel inherits Text {
+    font-family: Tokens.font-sans;
+    font-weight: Tokens.weight-medium;
+    font-size: Tokens.button-size;
+    letter-spacing: Tokens.button-letter-spacing;
+    vertical-alignment: center;
+    horizontal-alignment: center;
+}
+
+// A 24 px glyph, vertically centred in a button row.
+component ButtonIcon inherits VerticalLayout {
+    in property <image> source;
+    in property <color> tint;
+
+    alignment: center;
+    Image {
+        source: root.source;
+        colorize: root.tint;
+        width: 24px;
+        height: 24px;
+        image-fit: contain;
+    }
+}
+
+// Inverted surface, dark label, 2 px terminal-green ring when focused. PLAY / RESUME.
+export component FilledButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <int> zone: -1;
+    in property <int> index: 0;
+    in property <bool> force-focus;
+    out property <bool> focused: root.force-focus || (root.zone >= 0 && FocusState.zone == root.zone && FocusState.index == root.index);
+
+    min-height: 48px;
+    background: Tokens.inverted;
+    border-radius: 0;
+
+    HorizontalLayout {
+        padding-left: Tokens.space-lg;
+        padding-right: Tokens.space-lg;
+        spacing: Tokens.space-sm;
+        alignment: center;
+
+        if root.icon.width > 0: ButtonIcon {
+            source: root.icon;
+            tint: Tokens.text-on-inverted;
+        }
+        ButtonLabel {
+            text: root.text;
+            color: Tokens.text-on-inverted;
+        }
+    }
+
+    FocusArea {
+        zone: root.zone;
+        index: root.index;
+    }
+
+    FocusRing {
+        focused: root.focused;
+        ring: Tokens.terminal-green;
+    }
+}
+
+// Transparent with a 1 px hairline-strong border and a secondary label; the white
+// 2 px ring replaces the border when focused. `selected` lifts the label to primary.
+export component GhostButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> selected;
+    in property <int> zone: -1;
+    in property <int> index: 0;
+    in property <bool> force-focus;
+    out property <bool> focused: root.force-focus || (root.zone >= 0 && FocusState.zone == root.zone && FocusState.index == root.index);
+
+    min-height: 48px;
+    background: transparent;
+    border-radius: 0;
+
+    HorizontalLayout {
+        padding-left: Tokens.space-lg;
+        padding-right: Tokens.space-lg;
+        spacing: Tokens.space-sm;
+        alignment: center;
+
+        if root.icon.width > 0: ButtonIcon {
+            source: root.icon;
+            tint: root.selected ? Tokens.text-primary : Tokens.text-secondary;
+        }
+        ButtonLabel {
+            text: root.text;
+            color: root.selected ? Tokens.text-primary : Tokens.text-secondary;
+        }
+    }
+
+    FocusArea {
+        zone: root.zone;
+        index: root.index;
+    }
+
+    FocusRing {
+        focused: root.focused;
+        rest: Tokens.hairline-strong;
+    }
+}
+
+// A season in the Details header. The selected season reads in primary text.
+export component SeasonPill inherits GhostButton { }
+
+// The player's square icon button: 72 px, 48 px glyph, 2 px ring when focused.
+export component IconButton inherits Rectangle {
+    in property <image> icon;
+    in property <int> zone: -1;
+    in property <int> index: 0;
+    in property <bool> force-focus;
+    out property <bool> focused: root.force-focus || (root.zone >= 0 && FocusState.zone == root.zone && FocusState.index == root.index);
+
+    width: Tokens.player-button-size;
+    height: Tokens.player-button-size;
+    background: transparent;
+    border-radius: 0;
+
+    Image {
+        source: root.icon;
+        width: Tokens.player-glyph-size;
+        height: Tokens.player-glyph-size;
+        image-fit: contain;
+    }
+
+    FocusArea {
+        zone: root.zone;
+        index: root.index;
+    }
+
+    FocusRing {
+        focused: root.focused;
+    }
+}

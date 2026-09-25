@@ -1,0 +1,54 @@
+// Modal dialogs. DialogPanel is the card (card surface, hairline-strong border,
+// eyebrow label, optional heading, then the children). Dialog centres a panel over
+// a dimmed window and swallows pointer input behind it. Focus is trapped in Rust by
+// `FocusGraph::push_modal`; the panel's focusables use the modal's zones.
+import { Tokens } from "../tokens.slint";
+import { Eyebrow, Heading } from "text.slint";
+
+export component DialogPanel inherits Rectangle {
+    in property <string> label;
+    in property <string> title;
+
+    background: Tokens.card;
+    border-radius: 0;
+    border-width: Tokens.hairline-width;
+    border-color: Tokens.hairline-strong;
+
+    VerticalLayout {
+        padding: Tokens.space-lg;
+        spacing: Tokens.space-md;
+
+        if root.label != "": Eyebrow {
+            text: root.label;
+        }
+
+        if root.title != "": Heading {
+            text: root.title;
+            wrap: word-wrap;
+        }
+
+        @children
+    }
+}
+
+export component Dialog inherits Rectangle {
+    in property <string> label;
+    in property <string> title;
+    in property <length> panel-width: 640px;
+
+    // Dims the screen behind. Black at 70 %; no blur, no shadow.
+    background: #000000B3;
+
+    // Swallows clicks and hover behind the panel.
+    TouchArea { }
+
+    DialogPanel {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: root.panel-width;
+        label: root.label;
+        title: root.title;
+
+        @children
+    }
+}
