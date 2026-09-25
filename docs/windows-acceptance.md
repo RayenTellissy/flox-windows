@@ -104,3 +104,16 @@ without TMDB or Telegram.
 - [ ] Space, ENTER, arrows (with acceleration while held), Esc/Backspace, M, Ctrl+R and F11 behave as in the plan's key table; moving the mouse shows the overlay and clicking the video toggles play.
 - [ ] While the player is open `powercfg /requests` lists `flox.exe` under `DISPLAY`; after closing it, `DISPLAY` no longer lists it.
 - [ ] Rename `libmpv-2.dll` away and play something: the player shows PLAYBACK FAILED with `LIBMPV NOT FOUND` (or falls back to the page player on a VidLink title) instead of crashing.
+
+## VidLink page path (sniff, native playback, page fallback)
+
+Run with `FLOX_LOG=info`. Signed out of Telegram (or on a title with no library print), PLAY
+takes the VidLink path.
+
+- [ ] A TV episode plays natively via the sniffed HLS: within 45 s of PLAY the video starts under the flox overlay (not in a WebView), the log shows no `sniff:` warning, the overlay's eyebrow reads `S<n> · E<n>`, and the seek bar and times work. SUBTITLES offers the page's captions with the preferred subtitle language first.
+- [ ] Closing the player during the LOADING stamp (before the sniff answers) leaves no WebView or sound behind, and opening another title right away sniffs the new one.
+- [ ] With the network cut before PLAY, the sniff gives up after 45 s, reloads once (`RELOADING PLAYER`), then shows PLAYBACK FAILED; ENTER retries.
+- [ ] Set `FLOX_FORCE_PAGE=1` and play a VidLink title: the log shows `FLOX_FORCE_PAGE is set: skipping native playback`, the page player appears over the whole player area with its own UI and sound, and no flox overlay or hint draws over it.
+- [ ] Page fallback keyboard navigation (with `FLOX_FORCE_PAGE=1`): Space and ENTER toggle play; Left and Right seek; holding ENTER or pressing Up/Down enters navigation mode (focus outline), arrows move it, ENTER activates; M opens the page's settings panel; Esc closes an open panel, then leaves navigation mode, then leaves the player; Ctrl+R reloads the page at the current position.
+- [ ] With `FLOX_FORCE_PAGE=1`, the saved position and a playback speed other than 1.0 are applied once the page is ready, and Continue Watching shows the right time after leaving (progress comes from the page's ticks). At the end of a TV episode with AUTOPLAY NEXT on, the next episode opens in the page player.
+- [ ] Window resize keeps the page view sized: drag the window edge, maximize, restore and toggle F11 while the page player is up; within a quarter second each time the page view exactly covers the client area again, with no gap or overflow.
