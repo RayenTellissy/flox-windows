@@ -37,6 +37,8 @@ tracing-subscriber.workspace = true
 parking_lot.workspace = true
 qrcode.workspace = true
 uuid.workspace = true
+reqwest.workspace = true
+url.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 # The window's HWND for SMTC media keys and the page player.

@@ -1,7 +1,214 @@
-import { ScreenPlaceholder } from "placeholder.slint";
+// Library manager (Mac LibraryView): every uploaded print grouped by title (the TMDB
+// name, else TMDB <id>). Each row reads `S01 E05` / `MOVIE`, `quality codec` and the
+// size; CENTER or a click asks to DELETE it in a confirm dialog (the Mac deleted at
+// once; Windows asks, as the action cannot be undone). REFRESH re-reads the channel.
+// Stamps: READING THE CHANNEL, LIBRARY IS EMPTY, CONNECT TELEGRAM, or the error.
+// Data and focus come from Rust (src/ingest_shell.rs, src/vm/library.rs).
+import { Tokens } from "../tokens.slint";
+import {
+    FocusState, FocusArea, FocusRing, Eyebrow, Caption, Heading, GhostButton, FilledButton,
+    StateStamp, Dialog
+} from "../components/all.slint";
+import { Reveal } from "home.slint";
 
-export component LibraryScreen inherits ScreenPlaceholder {
-    eyebrow: "LIBRARY";
-    heading: "Library";
-    caption: "Everything uploaded to the channel.";
+export struct LibraryEntry {
+    // Position in the flat list: the focus index.
+    index: int,
+    key: string,
+    quality: string,
+    size: string,
+}
+
+export struct LibraryGroup {
+    title: string,
+    entries: [LibraryEntry],
+}
+
+// Mirrors the constants in src/vm/library.rs.
+export global LibraryZones {
+    out property <int> refresh: 32;
+    out property <int> entries: 33;
+    out property <int> confirm: 34;
+}
+
+export global LibraryState {
+    in property <[LibraryGroup]> groups;
+    // In place of the list: READING THE CHANNEL, LIBRARY IS EMPTY, ...; empty when shown.
+    in property <string> stamp: "READING THE CHANNEL";
+    // Under the list: an error or READING THE CHANNEL during a refresh.
+    in property <string> status;
+    in property <bool> confirm-open;
+    in property <string> confirm-text;
+    in-out property <length> scroll-y;
+}
+
+component EntryRow inherits Rectangle {
+    in property <LibraryEntry> entry;
+    out property <bool> focused: FocusState.zone == LibraryZones.entries && FocusState.index == root.entry.index;
+
+    min-height: 56px;
+    background: Tokens.card;
+
+    HorizontalLayout {
+        padding-left: Tokens.space-md;
+        padding-right: Tokens.space-md;
+        spacing: Tokens.space-lg;
+
+        Caption {
+            width: 120px;
+            text: root.entry.key;
+            color: Tokens.text-primary;
+            vertical-alignment: center;
+        }
+
+        Eyebrow {
+            text: root.entry.quality;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+
+        Eyebrow {
+            text: root.entry.size;
+            color: Tokens.text-muted;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+
+        Eyebrow {
+            text: "DELETE";
+            color: root.focused ? Tokens.text-primary : Tokens.text-muted;
+            vertical-alignment: center;
+        }
+    }
+
+    FocusArea {
+        zone: LibraryZones.entries;
+        index: root.entry.index;
+    }
+
+    FocusRing {
+        focused: root.focused;
+        rest: Tokens.hairline;
+    }
+}
+
+export component LibraryScreen inherits Rectangle {
+    background: Tokens.canvas;
+
+    function reveal(y: length, height: length) {
+        list.content-y = -Reveal.offset(-list.content-y, list.height, page.preferred-height, y, height);
+    }
+
+    VerticalLayout {
+        padding: Tokens.screen-padding;
+        spacing: Tokens.space-lg;
+
+        HorizontalLayout {
+            spacing: Tokens.space-md;
+
+            VerticalLayout {
+                spacing: Tokens.space-xs;
+                horizontal-stretch: 1;
+
+                Eyebrow {
+                    text: "LIBRARY";
+                }
+
+                Heading {
+                    text: "Everything uploaded";
+                }
+            }
+
+            VerticalLayout {
+                alignment: end;
+
+                GhostButton {
+                    text: "REFRESH";
+                    zone: LibraryZones.refresh;
+                    index: 0;
+                }
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+
+            list := Flickable {
+                width: 100%;
+                height: 100%;
+                visible: LibraryState.stamp == "";
+                content-height: page.preferred-height;
+                content-y <=> LibraryState.scroll-y;
+
+                page := VerticalLayout {
+                    alignment: start;
+                    spacing: Tokens.space-xl;
+
+                    for group in LibraryState.groups: VerticalLayout {
+                        spacing: Tokens.space-sm;
+
+                        Eyebrow {
+                            text: group.title;
+                        }
+
+                        for entry in group.entries: EntryRow {
+                            entry: entry;
+                            changed focused => {
+                                if self.focused {
+                                    root.reveal(self.absolute-position.y - page.absolute-position.y, self.height);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if LibraryState.stamp != "": StateStamp {
+                width: 100%;
+                height: 100%;
+                text: LibraryState.stamp;
+            }
+        }
+
+        if LibraryState.status != "": Eyebrow {
+            text: LibraryState.status;
+            color: Tokens.text-muted;
+        }
+    }
+
+    if LibraryState.confirm-open: Dialog {
+        width: 100%;
+        height: 100%;
+        label: "DELETE";
+        title: "Delete this print?";
+
+        Caption {
+            text: LibraryState.confirm-text;
+            color: Tokens.text-primary;
+            wrap: word-wrap;
+        }
+
+        Caption {
+            text: "Its parts and subtitle are removed from the channel for everyone. This cannot be undone.";
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            spacing: Tokens.space-md;
+            padding-top: Tokens.space-sm;
+            alignment: end;
+
+            GhostButton {
+                text: "CANCEL";
+                zone: LibraryZones.confirm;
+                index: 0;
+            }
+
+            FilledButton {
+                text: "DELETE";
+                zone: LibraryZones.confirm;
+                index: 1;
+            }
+        }
+    }
 }

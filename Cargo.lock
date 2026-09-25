@@ -1381,6 +1381,7 @@ dependencies = [
  "parking_lot",
  "qrcode",
  "raw-window-handle",
+ "reqwest",
  "serde",
  "serde_json",
  "slint",
@@ -1391,6 +1392,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "url",
  "uuid",
  "winresource",
 ]

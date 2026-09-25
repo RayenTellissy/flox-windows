@@ -1,0 +1,145 @@
+// The local files dialog (Mac LocalFilesView). The system picker opens first; each
+// picked file is a row with its episode number (TV, read from the name, editable),
+// the file name (middle-truncated in Rust), its SDR / HDR / DV tag (CENTER cycles)
+// and REMOVE. CHOOSE FILES adds more, CANCEL closes, QUEUE N queues file jobs.
+//
+// Each cell is its own focus zone (`rows + row * stride + col`), as in the paste
+// links dialog.
+import { Tokens } from "../tokens.slint";
+import { FocusState } from "focus.slint";
+import { Caption, Eyebrow } from "text.slint";
+import { FilledButton, GhostButton } from "buttons.slint";
+import { TextField } from "text_field.slint";
+import { StateStamp } from "stamps.slint";
+import { Dialog } from "dialog.slint";
+import { DialogScroll } from "paste_links.slint";
+
+export struct FileRow {
+    episode: string,
+    name: string,
+    tag: string,
+}
+
+// Mirrors the constants in src/vm/ingest.rs.
+export global FilesZones {
+    out property <int> rows: 3000;
+    out property <int> stride: 4;
+    out property <int> footer: 83;
+}
+
+export global FilesState {
+    in property <bool> open;
+    in property <bool> is-tv;
+    // `Severance · Season 2. One file per episode.`
+    in property <string> subtitle;
+    in property <[FileRow]> rows;
+    in property <string> queue-label: "QUEUE 0";
+
+    callback episode-edited(row: int, text: string);
+}
+
+export component LocalFilesDialog inherits Dialog {
+    property <int> focused-row: FocusState.zone >= FilesZones.rows && FocusState.zone < FilesZones.rows + 1000 ? floor((FocusState.zone - FilesZones.rows) / FilesZones.stride) : -1;
+    property <length> row-pitch: 56px + Tokens.space-xs;
+
+    label: "LOCAL FILES";
+    title: "Upload files from disk";
+    panel-width: 880px;
+
+    changed focused-row => {
+        if root.focused-row >= 0 {
+            list.content-y = -DialogScroll.offset(-list.content-y, list.height, list.content-height, root.focused-row * root.row-pitch, 56px);
+        }
+    }
+
+    Caption {
+        text: FilesState.subtitle;
+        wrap: word-wrap;
+    }
+
+    if FilesState.rows.length == 0: StateStamp {
+        height: 120px;
+        text: "NO FILES CHOSEN";
+    }
+
+    list := Flickable {
+        height: min(FilesState.rows.length * root.row-pitch, 5 * root.row-pitch);
+        content-height: FilesState.rows.length * root.row-pitch;
+
+        for row[i] in FilesState.rows: HorizontalLayout {
+            x: 0;
+            y: i * root.row-pitch;
+            width: list.width;
+            height: 56px;
+            spacing: Tokens.space-sm;
+
+            if FilesState.is-tv: TextField {
+                width: 96px;
+                text: row.episode;
+                placeholder: "E";
+                input-type: InputType.number;
+                zone: FilesZones.rows + i * FilesZones.stride + 0;
+                edited(text) => {
+                    FilesState.episode-edited(i, text);
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                background: Tokens.card;
+                border-width: Tokens.hairline-width;
+                border-color: Tokens.hairline;
+
+                HorizontalLayout {
+                    padding-left: Tokens.space-md;
+                    padding-right: Tokens.space-md;
+
+                    Caption {
+                        text: row.name;
+                        color: Tokens.text-primary;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+
+            GhostButton {
+                width: 88px;
+                text: row.tag;
+                zone: FilesZones.rows + i * FilesZones.stride + 1;
+            }
+
+            GhostButton {
+                text: "REMOVE";
+                zone: FilesZones.rows + i * FilesZones.stride + 2;
+            }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: Tokens.space-md;
+        padding-top: Tokens.space-sm;
+
+        GhostButton {
+            text: "CHOOSE FILES";
+            zone: FilesZones.footer;
+            index: 0;
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+        }
+
+        GhostButton {
+            text: "CANCEL";
+            zone: FilesZones.footer;
+            index: 1;
+        }
+
+        FilledButton {
+            text: FilesState.queue-label;
+            zone: FilesZones.footer;
+            index: 2;
+        }
+    }
+}
