@@ -69,6 +69,8 @@ const LANGUAGES: &[(&str, &str, &str, &str)] = &[
     ("uk", "ukr", "", "Ukrainian"),
     ("ur", "urd", "", "Urdu"),
     ("vi", "vie", "", "Vietnamese"),
+    ("eu", "baq", "eus", "Basque"),
+    ("gl", "glg", "", "Galician"),
 ];
 
 /// Other English names seen in caption lists, mapped to their ISO 639-1 code.
@@ -176,6 +178,11 @@ mod tests {
         assert_eq!(iso_from_english_name("Chinese (Simplified)"), Some("zh"));
         assert_eq!(iso_from_english_name("Mandarin"), Some("zh"));
         assert_eq!(iso_from_english_name("Dutch"), Some("nl"));
+        assert_eq!(iso_from_english_name("Basque"), Some("eu"));
+        assert_eq!(iso_from_english_name("Galician"), Some("gl"));
+        assert_eq!(iso_from_english_name("Chinese - Simplified"), Some("zh"));
+        assert_eq!(iso_from_english_name("Norwegian Bokmal"), Some("nb"));
+        assert_eq!(iso_from_english_name("English SDH"), Some("en"));
         assert_eq!(iso_from_english_name("Klingon"), None);
         assert_eq!(iso_from_english_name(""), None);
     }
@@ -189,6 +196,8 @@ mod tests {
         assert_eq!(display_name("fre"), Some("French"));
         assert_eq!(display_name("fra"), Some("French"));
         assert_eq!(display_name("zho"), Some("Chinese"));
+        assert_eq!(display_name("nld"), Some("Dutch"));
+        assert_eq!(display_name("eus"), Some("Basque"));
         assert_eq!(display_name("und"), None);
         assert_eq!(display_name(""), None);
     }

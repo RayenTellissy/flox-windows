@@ -102,39 +102,10 @@ fn channel_name(n: u32) -> Option<String> {
     }
 }
 
-/// ISO 639-2 (bibliographic and terminology) codes for the selectable languages.
-const ISO_639_2: &[(&str, &str)] = &[
-    ("eng", "en"),
-    ("spa", "es"),
-    ("fre", "fr"),
-    ("fra", "fr"),
-    ("ger", "de"),
-    ("deu", "de"),
-    ("ita", "it"),
-    ("por", "pt"),
-    ("rus", "ru"),
-    ("ara", "ar"),
-    ("hin", "hi"),
-    ("jpn", "ja"),
-    ("kor", "ko"),
-    ("chi", "zh"),
-    ("zho", "zh"),
-    ("tur", "tr"),
-];
-
-/// English name for a two- or three-letter code; the code itself when unknown
-/// (as Android's `Locale.getDisplayLanguage` falls back).
+/// English name for a two- or three-letter code ([`flox_core::lang::display_name`]); the
+/// code itself when unknown (as Android's `Locale.getDisplayLanguage` falls back).
 fn language_name(code: &str) -> String {
-    let lower = code.to_ascii_lowercase();
-    let base = lower.split(['-', '_']).next().unwrap_or(&lower);
-    let iso1 = ISO_639_2
-        .iter()
-        .find(|(three, _)| *three == base)
-        .map_or(base, |(_, two)| *two);
-    flox_core::lang::LANGUAGE_NAMES
-        .iter()
-        .find(|(c, _)| *c == iso1)
-        .map_or_else(|| code.to_owned(), |(_, name)| (*name).to_owned())
+    flox_core::lang::display_name(code).map_or_else(|| code.to_owned(), str::to_owned)
 }
 
 /// `"English · E-AC3 · 5.1"`. Unknown parts are left out.
@@ -228,7 +199,7 @@ mod tests {
                 "French · AAC · 2.0",
                 "OPUS · 2.0",
                 "Japanese · DTS",
-                "nld · FLAC · 1.0",
+                "Dutch · FLAC · 1.0",
             ]
         );
     }
@@ -251,6 +222,7 @@ mod tests {
         assert_eq!(audio_label(&empty), "Audio");
         assert_eq!(language_name("pt-BR"), "Portuguese");
         assert_eq!(language_name("GER"), "German");
+        assert_eq!(language_name("qaa"), "qaa", "unknown codes stay as given");
     }
 
     #[test]

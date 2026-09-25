@@ -5,7 +5,7 @@
 //! posts the same shape directly. Parsing follows Android `PlayerBridge.kt` and the
 //! Mac `Sniffer.swift` (`FLOX_PLAYLIST`).
 
-use flox_core::lang::LANGUAGE_NAMES;
+use flox_core::lang::iso_from_english_name;
 use flox_core::sniff::{Caption, StreamKind};
 use serde_json::{Map, Value};
 
@@ -193,67 +193,6 @@ fn tick(d: &Map<String, Value>) -> Option<BridgeMessage> {
         paused: flag("paused", true),
         ended: flag("ended", false),
     })
-}
-
-/// Extra English names seen on caption lists beyond the 13 settings languages.
-const EXTRA_LANGUAGE_NAMES: &[(&str, &str)] = &[
-    ("nl", "Dutch"),
-    ("pl", "Polish"),
-    ("sv", "Swedish"),
-    ("da", "Danish"),
-    ("no", "Norwegian"),
-    ("nb", "Norwegian Bokmal"),
-    ("fi", "Finnish"),
-    ("el", "Greek"),
-    ("he", "Hebrew"),
-    ("hu", "Hungarian"),
-    ("cs", "Czech"),
-    ("ro", "Romanian"),
-    ("bg", "Bulgarian"),
-    ("hr", "Croatian"),
-    ("sr", "Serbian"),
-    ("sk", "Slovak"),
-    ("sl", "Slovenian"),
-    ("uk", "Ukrainian"),
-    ("fa", "Persian"),
-    ("id", "Indonesian"),
-    ("ms", "Malay"),
-    ("th", "Thai"),
-    ("vi", "Vietnamese"),
-    ("bn", "Bengali"),
-    ("ta", "Tamil"),
-    ("te", "Telugu"),
-    ("ur", "Urdu"),
-    ("tl", "Tagalog"),
-    ("et", "Estonian"),
-    ("lv", "Latvian"),
-    ("lt", "Lithuanian"),
-    ("is", "Icelandic"),
-    ("ca", "Catalan"),
-    ("eu", "Basque"),
-    ("gl", "Galician"),
-];
-
-/// `"Spanish"` → `"es"`, tolerant of qualifiers (`"English (SDH)"`, `"Portuguese - Brazil"`).
-/// Stands in for `flox_core::lang::iso_from_english_name` until that lookup is filled in.
-fn iso_from_english_name(name: &str) -> Option<&'static str> {
-    let base = name
-        .split(['(', '[', '-', ',', '/', '|'])
-        .next()
-        .unwrap_or(name)
-        .trim();
-    let words: Vec<&str> = base.split_whitespace().collect();
-    let names = LANGUAGE_NAMES.iter().chain(EXTRA_LANGUAGE_NAMES);
-    for (iso, english) in names.clone() {
-        if base.eq_ignore_ascii_case(english) {
-            return Some(*iso);
-        }
-    }
-    // "Brazilian Portuguese", "English SDH": any single word that names a language
-    names
-        .into_iter()
-        .find(|(_, english)| words.iter().any(|w| w.eq_ignore_ascii_case(english)))
-        .map(|(iso, _)| *iso)
 }
 
 /// The ISO code for a caption label, else the trimmed label as the page gave it.
@@ -516,18 +455,21 @@ mod tests {
     }
 
     #[test]
-    fn language_names() {
-        assert_eq!(iso_from_english_name("English"), Some("en"));
-        assert_eq!(iso_from_english_name("english"), Some("en"));
-        assert_eq!(iso_from_english_name("English (US)"), Some("en"));
-        assert_eq!(iso_from_english_name("Chinese - Simplified"), Some("zh"));
-        assert_eq!(iso_from_english_name("Brazilian Portuguese"), Some("pt"));
-        assert_eq!(iso_from_english_name("Turkish"), Some("tr"));
-        assert_eq!(iso_from_english_name("Norwegian Bokmal"), Some("nb"));
-        assert_eq!(iso_from_english_name(""), None);
-        assert_eq!(iso_from_english_name("Elvish"), None);
-        for (iso, name) in LANGUAGE_NAMES {
-            assert_eq!(iso_from_english_name(name), Some(*iso));
+    fn caption_languages() {
+        assert_eq!(caption_language("English"), "en");
+        assert_eq!(caption_language("English (US)"), "en");
+        assert_eq!(caption_language("Chinese - Simplified"), "zh");
+        assert_eq!(caption_language("Brazilian Portuguese"), "pt");
+        assert_eq!(caption_language("Norwegian Bokmal"), "nb");
+        assert_eq!(caption_language("Basque"), "eu");
+        assert_eq!(
+            caption_language("  Elvish "),
+            "Elvish",
+            "unknown labels stay as given"
+        );
+        assert_eq!(caption_language(""), "");
+        for (iso, name) in flox_core::lang::LANGUAGE_NAMES {
+            assert_eq!(caption_language(name), *iso);
         }
     }
 }
