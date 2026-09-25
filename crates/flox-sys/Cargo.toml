@@ -13,7 +13,14 @@ tracing.workspace = true
 rfd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows.workspace = true
+# Extra features on top of the workspace set, for the Start menu shortcut that
+# carries the toast identity (IShellLinkW + IPropertyStore + PKEY_AppUserModel_ID).
+windows = { workspace = true, features = [
+    "Win32_Storage_EnhancedStorage",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
+    "Win32_UI_Shell_PropertiesSystem",
+] }
 webview2-com.workspace = true
 tauri-winrt-notification.workspace = true
 
