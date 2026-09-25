@@ -1,0 +1,28 @@
+[package]
+name = "flox-td"
+description = "TDLib JSON client (runtime-loaded tdjson), auth, library index, uploads and streaming"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+flox-core.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+libloading.workspace = true
+base64.workspace = true
+parking_lot.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

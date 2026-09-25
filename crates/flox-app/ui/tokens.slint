@@ -1,0 +1,70 @@
+// Design tokens from DESIGN.dark.md. Android dp map 1:1 to logical px.
+
+export global Tokens {
+    // Colours
+    out property <color> canvas: #0E0E0E;
+    out property <color> card: #161616;
+    out property <color> inverted: #FAFAFA;
+    out property <color> hairline: #FFFFFF14;
+    out property <color> hairline-strong: #FFFFFF29;
+    out property <color> text-primary: #FAFAFA;
+    out property <color> text-secondary: #C9C9C9;
+    out property <color> text-muted: #8F8F8F;
+    out property <color> text-disabled: #4D4D4D;
+    out property <color> text-on-inverted: #0E0E0E;
+    out property <color> terminal-green: #297A3A;
+    out property <color> pure-black: #000000;
+    out property <color> focus-ring: #FAFAFA;
+
+    // Player scrim, bottom to top
+    out property <brush> scrim: @linear-gradient(0deg, #000000D9 0%, #00000040 50%, #00000000 100%);
+
+    // Type families and weights
+    out property <string> font-sans: "Geist";
+    out property <string> font-mono: "Geist Mono";
+    out property <int> weight-regular: 400;
+    out property <int> weight-medium: 500;
+
+    // Eyebrow: Geist Mono 14, +0.071em, uppercase (done in Rust), secondary
+    out property <length> eyebrow-size: 14px;
+    out property <length> eyebrow-letter-spacing: 1px;
+    // Caption: Geist 18, secondary
+    out property <length> caption-size: 18px;
+    // Body: Geist 22, line-height 1.4
+    out property <length> body-size: 22px;
+    out property <float> body-line-height: 1.4;
+    // Heading: Geist Medium 36, -0.03em, line-height 1.05
+    out property <length> heading-size: 36px;
+    out property <length> heading-letter-spacing: -1.08px;
+    out property <float> heading-line-height: 1.05;
+    // Display: Geist Medium 56, -0.05em
+    out property <length> display-size: 56px;
+    out property <length> display-letter-spacing: -2.8px;
+    // Button: Geist Medium 18, uppercase, +0.04em
+    out property <length> button-size: 18px;
+    out property <length> button-letter-spacing: 0.72px;
+
+    // Spacing (4-grid)
+    out property <length> space-xxs: 4px;
+    out property <length> space-xs: 8px;
+    out property <length> space-sm: 12px;
+    out property <length> space-md: 16px;
+    out property <length> space-lg: 24px;
+    out property <length> space-xl: 32px;
+    out property <length> space-xxl: 48px;
+    out property <length> screen-padding: 48px;
+
+    // Sizes
+    out property <length> hairline-width: 1px;
+    out property <length> focus-width: 2px;
+    out property <length> poster-width: 160px;
+    out property <length> poster-height: 240px;
+    out property <length> still-width: 224px;
+    out property <length> still-height: 126px;
+    out property <length> details-poster-width: 280px;
+    out property <length> details-poster-height: 420px;
+    out property <length> qr-size: 280px;
+    out property <length> player-button-size: 72px;
+    out property <length> player-glyph-size: 48px;
+    out property <length> tracks-panel-width: 480px;
+}

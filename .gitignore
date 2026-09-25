@@ -1,0 +1,6 @@
+/target
+/deps
+/dist
+*.pdb
+/crates/*/tests/fixtures/live/
+.DS_Store

@@ -1,0 +1,2 @@
+[alias]
+wcheck = "clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings"

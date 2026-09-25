@@ -1,0 +1,73 @@
+// Flox for Windows: root window and screen router.
+import "../../../assets/fonts/Geist-Regular.ttf";
+import "../../../assets/fonts/Geist-Medium.ttf";
+import "../../../assets/fonts/GeistMono-Regular.ttf";
+import "../../../assets/fonts/GeistMono-Medium.ttf";
+
+import { Tokens } from "tokens.slint";
+import { HomeScreen } from "screens/home.slint";
+import { SearchScreen } from "screens/search.slint";
+import { DetailsScreen } from "screens/details.slint";
+import { QueueScreen } from "screens/queue.slint";
+import { LibraryScreen } from "screens/library.slint";
+import { SettingsScreen } from "screens/settings.slint";
+import { LoginScreen } from "screens/login.slint";
+import { PlayerScreen } from "screens/player.slint";
+
+export enum Screen {
+    home,
+    search,
+    details,
+    queue,
+    library,
+    settings,
+    login,
+    player,
+}
+
+export component AppWindow inherits Window {
+    in-out property <Screen> screen: Screen.home;
+    in property <string> version: "1.0.0";
+
+    title: "Flox";
+    min-width: 1280px;
+    min-height: 720px;
+    preferred-width: 1280px;
+    preferred-height: 720px;
+    default-font-family: Tokens.font-sans;
+    default-font-size: Tokens.body-size;
+    background: root.screen == Screen.player ? Tokens.pure-black : Tokens.canvas;
+
+    if root.screen == Screen.home: HomeScreen {
+        width: 100%;
+        height: 100%;
+    }
+    if root.screen == Screen.search: SearchScreen {
+        width: 100%;
+        height: 100%;
+    }
+    if root.screen == Screen.details: DetailsScreen {
+        width: 100%;
+        height: 100%;
+    }
+    if root.screen == Screen.queue: QueueScreen {
+        width: 100%;
+        height: 100%;
+    }
+    if root.screen == Screen.library: LibraryScreen {
+        width: 100%;
+        height: 100%;
+    }
+    if root.screen == Screen.settings: SettingsScreen {
+        width: 100%;
+        height: 100%;
+    }
+    if root.screen == Screen.login: LoginScreen {
+        width: 100%;
+        height: 100%;
+    }
+    if root.screen == Screen.player: PlayerScreen {
+        width: 100%;
+        height: 100%;
+    }
+}

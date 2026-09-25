@@ -1,0 +1,24 @@
+[package]
+name = "flox-player"
+description = "Safe libmpv wrapper (runtime-loaded), stream callbacks, OpenGL render API, tracks and filters"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+flox-core.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+libloading.workspace = true
+parking_lot.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,31 @@
+[package]
+name = "flox-core"
+description = "Platform-neutral models, settings, progress, TMDB, image cache and shared contracts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tokio.workspace = true
+tokio-util.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+url.workspace = true
+sha1.workspace = true
+parking_lot.workspace = true
+lru.workspace = true
+image.workspace = true
+
+[dev-dependencies]
+wiremock.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,86 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/flox-core",
+    "crates/flox-td",
+    "crates/flox-rip",
+    "crates/flox-player",
+    "crates/flox-web",
+    "crates/flox-sys",
+    "crates/flox-app",
+]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.95"
+license = "UNLICENSED"
+publish = false
+
+# Rule: nothing here may compile C for x86_64-pc-windows-msvc in a build script
+# (no cl.exe on the Mac). That is why reqwest uses native-tls and why there is
+# no rustls/aws-lc/ring, openssl-sys, zstd-sys or libsqlite3-sys.
+[workspace.dependencies]
+flox-core = { path = "crates/flox-core" }
+flox-td = { path = "crates/flox-td" }
+flox-rip = { path = "crates/flox-rip" }
+flox-player = { path = "crates/flox-player" }
+flox-web = { path = "crates/flox-web" }
+flox-sys = { path = "crates/flox-sys" }
+
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "process", "io-util"] }
+tokio-util = { version = "0.7", default-features = false }
+futures = "0.3"
+async-trait = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["native-tls", "json", "gzip", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "ansi"] }
+libloading = "0.8"
+base64 = "0.22"
+sha1 = "0.10"
+regex = "1"
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+bytes = "1"
+parking_lot = "0.12"
+lru = "0.18"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+qrcode = { version = "0.14", default-features = false }
+rfd = "0.15"
+fs4 = "1"
+slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg", "renderer-software", "accessibility"] }
+slint-build = "1.18"
+winresource = "0.1"
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Power",
+    "Win32_System_Threading",
+    "Win32_System_WinRT",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+    "Media",
+    "Media_Playback",
+    "Foundation",
+] }
+webview2-com = "0.38"
+tauri-winrt-notification = "0.7"
+wiremock = "0.6"
+tempfile = "3"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+todo = "deny"
+dbg_macro = "deny"
