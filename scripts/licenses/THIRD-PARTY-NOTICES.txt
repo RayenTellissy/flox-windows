@@ -1,0 +1,44 @@
+Third-party components bundled with Flox for Windows
+====================================================
+
+The exact versions are pinned in scripts/deps.lock.json of the Flox source tree.
+
+mpv (libmpv-2.dll)
+------------------
+Licence: GNU General Public License version 2 or later. Parts of mpv are also
+available under the GNU Lesser General Public License version 2.1 or later, but
+this build is configured with GPL features enabled, so libmpv-2.dll as shipped is
+distributed under the GPLv2+ (see mpv-Copyright.txt).
+Texts: mpv-LICENSE.GPL.txt, mpv-LICENSE.LGPL.txt, mpv-Copyright.txt
+Binary: shinchiro/mpv-winbuild-cmake release 20260925 (mpv-dev-x86_64-v3),
+  https://github.com/shinchiro/mpv-winbuild-cmake
+Source: https://github.com/mpv-player/mpv/tree/2a4eb8067ca68ec19adf23daf8ccbb1a05afd6ed
+  and the build recipes (with the sources of every bundled library) at
+  https://github.com/shinchiro/mpv-winbuild-cmake/tree/20260925
+
+FFmpeg (tools\ffmpeg.exe, tools\ffprobe.exe)
+--------------------------------------------
+Licence: GNU General Public License (this build enables GPL components; the
+licence text shipped with the build is ffmpeg-LICENSE.txt).
+Binary: gyan.dev essentials build 9.0.2, https://www.gyan.dev/ffmpeg/builds/
+Source: https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz
+  and https://github.com/GyanD/codexffmpeg/releases/tag/9.0.2
+
+TDLib (tdjson.dll)
+------------------
+Licence: Boost Software License 1.0 (tdlib-LICENSE_1_0.txt).
+Version 1.8.67, built from https://github.com/tdlib/td at commit
+d1085f9cebc5a62379991ae1652673954f229c1f, statically linked with OpenSSL
+(Apache License 2.0) and zlib (zlib licence).
+
+yt-dlp (tools\yt-dlp.exe)
+-------------------------
+Licence: The Unlicense (yt-dlp-LICENSE.txt). The Windows executable bundles a
+Python runtime and packages under their own permissive licences; see
+https://github.com/yt-dlp/yt-dlp/blob/2026.08.19/THIRD_PARTY_LICENSES.txt
+Binary: https://github.com/yt-dlp/yt-dlp/releases/tag/2026.08.19
+
+Geist and Geist Mono fonts
+--------------------------
+Licence: SIL Open Font License 1.1 (Geist-OFL.txt).
+Source: https://github.com/vercel/geist-font

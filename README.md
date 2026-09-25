@@ -30,6 +30,9 @@ scripts/
   verify.sh             the verification matrix (below)
   fetch-deps.ps1        fetches or builds the third-party binaries (Windows)
   package.ps1           builds the portable zip (Windows)
+  deps.lock.json        pinned URLs, SHA-256 hashes and the TDLib commit
+  licenses/             third-party licence texts shipped in the zip
+  make-icon.py          renders assets/flox.ico and assets/flox-256.png
 ```
 
 Neither libmpv nor tdjson is linked at build time. Both are loaded with `libloading` from the resolved path. If one is missing, the app shows a readable "not found" state instead of failing at startup.
@@ -94,6 +97,54 @@ cargo build --release
 ```
 
 `fetch-deps.ps1` stages `tdjson.dll` and `libmpv-2.dll` next to the executable, and ffmpeg, ffprobe and yt-dlp in `tools\`.
+
+## Building on Windows
+
+**Tools:** Visual Studio 2022 Build Tools (the "Desktop development with C++" workload), rustup, Git, CMake and PowerShell 7. 7-Zip is optional; without it `tar.exe` unpacks the mpv archive.
+
+**Dependencies.** `scripts\deps.lock.json` pins each third-party binary by URL and SHA-256:
+
+| Binary | Source |
+|---|---|
+| `libmpv-2.dll` | shinchiro `mpv-winbuild-cmake`, `mpv-dev-x86_64-v3` (needs an AVX2 CPU) |
+| `ffmpeg.exe`, `ffprobe.exe` | gyan.dev essentials build |
+| `yt-dlp.exe` | yt-dlp GitHub release |
+| `tdjson.dll` | built from tdlib/td at the locked commit (1.8.67, the same commit as the Mac app) |
+
+`fetch-deps.ps1` downloads the archives into `deps\` and checks every hash. It then stages the binaries into `target\<profile>\`. It builds TDLib in one of three ways:
+
+- `-BuildTdlib` clones tdlib/td and vcpkg into `deps\` and builds a self-contained `tdjson.dll` with static OpenSSL, zlib and CRT. The first build takes about 30 minutes.
+- `-TdlibZip <path-or-url>` takes a prebuilt `tdjson.dll` from a zip, such as the CI's. A URL must match `tdlib.sha256` in the lock file.
+- With neither, it reuses an existing `deps\tdjson.dll`.
+
+```
+.\scripts\fetch-deps.ps1 -BuildTdlib
+$env:FLOX_TDJSON = "$PWD\deps\tdjson.dll"
+$env:FLOX_LIBMPV = "$PWD\deps\libmpv-2.dll"
+cargo test --workspace
+cargo build --release
+.\scripts\fetch-deps.ps1 -Profile release
+.\scripts\package.ps1
+```
+
+`package.ps1` writes `dist\Flox-1.0.0-win-x64.zip`:
+
+```
+Flox\flox.exe
+Flox\tdjson.dll
+Flox\libmpv-2.dll
+Flox\tools\ffmpeg.exe, ffprobe.exe, yt-dlp.exe
+Flox\LICENSES\      mpv (GPLv2+/LGPL), FFmpeg (GPL), TDLib (BSL-1.0), yt-dlp (Unlicense), Geist (OFL)
+Flox\README.txt
+```
+
+On a Windows host, `crates/flox-app/build.rs` embeds `assets/flox.ico` and the application manifest in `flox.exe`. The manifest declares PerMonitorV2 DPI awareness, long paths, the UTF-8 code page and Common Controls v6. Other hosts skip this step.
+
+**Icon.** `python3 scripts/make-icon.py` (needs Pillow) renders `assets/flox.ico` in 9 sizes (16 to 256 px) and `assets/flox-256.png`. The geometry is the same as the Mac and TV icons.
+
+**Updating a dependency.** Change the URL in `deps.lock.json` and set `sha256` to the output of `shasum -a 256` (or `Get-FileHash`). If you change `tdlib.commit`, also check that the JSON API shapes still match.
+
+**CI.** `.github/workflows/windows.yml` runs on `windows-latest`. It uses Rust 1.95 and runs `fetch-deps.ps1`. `tdjson.dll` is cached by TDLib commit, so TDLib is only rebuilt when the commit changes. The workflow then runs fmt, clippy with `-D warnings` and the tests (with `FLOX_TDJSON` and `FLOX_LIBMPV` set), makes the release build and packages it. The zip is uploaded as the `Flox-win-x64` artifact.
 
 ### Credentials
 
