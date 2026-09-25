@@ -52,21 +52,30 @@ pub fn hls_args(input: &str, headers: &[(String, String)], out: &Path) -> Vec<Os
 }
 
 /// DASH mux of the downloaded tracks: `-c copy -tag:v hvc1 -movflags +faststart`.
+/// Exactly the Mac's arguments, which assume HEVC video; see [`dash_args_for`].
 pub fn dash_args(video: &Path, audio: Option<&Path>, out: &Path) -> Vec<OsString> {
+    dash_args_for(video, audio, out, "hevc")
+}
+
+/// DASH mux for a video track of the given codec (an ffprobe `codec_name`). `-tag:v hvc1`
+/// is added only for HEVC: ffmpeg's mp4 muxer rejects that tag on any other codec.
+pub fn dash_args_for(
+    video: &Path,
+    audio: Option<&Path>,
+    out: &Path,
+    video_codec: &str,
+) -> Vec<OsString> {
     let mut args = os(&["-y", "-loglevel", "error", "-i"]);
     args.push(video.into());
     if let Some(audio) = audio {
         args.push("-i".into());
         args.push(audio.into());
     }
-    args.extend(os(&[
-        "-c",
-        "copy",
-        "-tag:v",
-        "hvc1",
-        "-movflags",
-        "+faststart",
-    ]));
+    args.extend(os(&["-c", "copy"]));
+    if video_codec.eq_ignore_ascii_case("hevc") {
+        args.extend(os(&["-tag:v", "hvc1"]));
+    }
+    args.extend(os(&["-movflags", "+faststart"]));
     args.push(out.into());
     args
 }
@@ -228,6 +237,32 @@ mod tests {
                 "/tmp/j/media.mp4",
             ]
         );
+    }
+
+    #[test]
+    fn dash_tags_hvc1_only_for_hevc() {
+        let (v, out) = (Path::new("/tmp/j/v.m4s"), Path::new("/tmp/j/media.mp4"));
+        for codec in ["hevc", "HEVC"] {
+            assert_eq!(dash_args_for(v, None, out, codec), dash_args(v, None, out));
+        }
+        for codec in ["h264", "av1", ""] {
+            assert_eq!(
+                strings(&dash_args_for(v, None, out, codec)),
+                vec![
+                    "-y",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    "/tmp/j/v.m4s",
+                    "-c",
+                    "copy",
+                    "-movflags",
+                    "+faststart",
+                    "/tmp/j/media.mp4",
+                ],
+                "{codec}"
+            );
+        }
     }
 
     #[test]

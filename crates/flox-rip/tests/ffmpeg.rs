@@ -166,6 +166,12 @@ async fn dash_args_mux_hevc_video_and_aac_audio() -> Result<()> {
         }
         other => panic!("expected an ffmpeg failure, got {other:?}"),
     }
+
+    // The codec-aware variant leaves the tag off for H.264, and the remux works.
+    let good = dir.path().join("good.mp4");
+    ffmpeg(&ffmpeg_path, mux::dash_args_for(&clip, None, &good, "h264")).await?;
+    let p = probe::ffprobe(&ffprobe_path, &good).await?;
+    assert_eq!((p.codec.as_str(), p.height), ("h264", 240));
     Ok(())
 }
 
