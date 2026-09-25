@@ -1,0 +1,96 @@
+name: windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CARGO_TERM_COLOR: always
+      FLOX_TDJSON: ${{ github.workspace }}\deps\tdjson.dll
+      FLOX_LIBMPV: ${{ github.workspace }}\deps\libmpv-2.dll
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Rust 1.95
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.95"
+          components: clippy, rustfmt
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Read the TDLib commit
+        id: lock
+        run: |
+          $lock = Get-Content scripts/deps.lock.json -Raw | ConvertFrom-Json
+          "tdlib=$($lock.tdlib.commit)" >> $env:GITHUB_OUTPUT
+
+      - name: Restore downloaded deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps/mpv-dev.7z
+            deps/ffmpeg.zip
+            deps/tools/yt-dlp.exe
+          key: deps-downloads-${{ hashFiles('scripts/deps.lock.json') }}
+
+      - name: Restore tdjson.dll
+        id: tdjson
+        uses: actions/cache/restore@v4
+        with:
+          path: deps/tdjson.dll
+          key: tdjson-x64-windows-static-${{ steps.lock.outputs.tdlib }}
+
+      - name: Fetch deps (building TDLib on a cache miss)
+        run: |
+          if ("${{ steps.tdjson.outputs.cache-hit }}" -eq "true") {
+            ./scripts/fetch-deps.ps1
+          } else {
+            ./scripts/fetch-deps.ps1 -BuildTdlib
+          }
+
+      - name: Save tdjson.dll
+        if: steps.tdjson.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: deps/tdjson.dll
+          key: tdjson-x64-windows-static-${{ steps.lock.outputs.tdlib }}
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Release build
+        run: cargo build --release -p flox-app
+
+      - name: Package
+        run: |
+          ./scripts/fetch-deps.ps1 -Profile release
+          ./scripts/package.ps1
+
+      - name: Upload the zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: Flox-win-x64
+          path: dist/Flox-*-win-x64.zip
+          if-no-files-found: error
