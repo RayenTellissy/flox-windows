@@ -175,6 +175,14 @@ impl LibraryView for FixtureLibrary {
     fn prints(&self, key: EpisodeKey) -> Vec<Print> {
         self.prints.get(&key).cloned().unwrap_or_default()
     }
+
+    fn all_qualities(&self) -> Vec<String> {
+        self.prints
+            .values()
+            .flatten()
+            .map(|p| p.quality.clone())
+            .collect()
+    }
 }
 
 /// Serves one [`FixtureLibrary`] on every refresh.

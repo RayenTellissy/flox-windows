@@ -1,7 +1,178 @@
-import { ScreenPlaceholder } from "placeholder.slint";
+// Settings: FLOX eyebrow, heading and key hint, then the sections (PLAYBACK, AUDIO,
+// INTERFACE, LIBRARY, ACCOUNT, TOOLS, ABOUT) as one list of card rows with a mono
+// value on the right. Rows and dialogs come from Rust (src/app/settings_screen.rs,
+// src/vm/settings.rs); the page scrolls to keep the focused row in view.
+import { Tokens } from "../tokens.slint";
+import {
+    FocusState, Eyebrow, Heading, ListRow, ChoiceDialog, TextDialog, ConfirmDialog
+} from "../components/all.slint";
 
-export component SettingsScreen inherits ScreenPlaceholder {
-    eyebrow: "SETTINGS";
-    heading: "Settings";
-    caption: "Playback, audio, interface, library, account and tools.";
+export struct SettingRow {
+    // The section label above the row; empty except on a section's first row.
+    header: string,
+    label: string,
+    value: string,
+}
+
+export enum SettingsDialog {
+    none,
+    choice,
+    text,
+    confirm,
+}
+
+// Mirrors the zone constants in src/vm/settings.rs.
+export global SettingsZones {
+    out property <int> list: 60;
+    out property <int> options: 61;
+    out property <int> field: 62;
+    out property <int> buttons: 63;
+}
+
+export global SettingsState {
+    in property <[SettingRow]> rows;
+    in-out property <length> scroll-y;
+
+    in property <SettingsDialog> dialog: SettingsDialog.none;
+    in property <string> dialog-title;
+    in property <string> dialog-message;
+    in property <[string]> dialog-options;
+    in property <int> dialog-current;
+    in-out property <string> dialog-text;
+    in property <string> dialog-placeholder;
+    in property <bool> dialog-secret;
+    in property <string> dialog-error;
+
+    // Enter in the text dialog's field.
+    callback dialog-accepted(text: string);
+}
+
+// A row with its section header above it (32 px over, 8 px under, as on Android).
+component SettingItem inherits VerticalLayout {
+    in property <string> header;
+    in property <string> label;
+    in property <string> value;
+    in property <int> index;
+    out property <bool> focused: row.focused;
+
+    if root.header != "": VerticalLayout {
+        padding-top: Tokens.space-xl;
+        padding-bottom: Tokens.space-xs;
+
+        Eyebrow {
+            text: root.header;
+        }
+    }
+
+    VerticalLayout {
+        padding-top: Tokens.space-xxs;
+
+        row := ListRow {
+            label: root.label;
+            value: root.value;
+            zone: SettingsZones.list;
+            index: root.index;
+        }
+    }
+}
+
+export component SettingsScreen inherits Rectangle {
+    background: Tokens.canvas;
+
+    function reveal(y: length, height: length) {
+        // The offset (>= 0) that shows [y, y + height), moving as little as possible.
+        flick.content-y = -clamp(
+            (y < -flick.content-y || height >= flick.height) ? y
+                : ((y + height > -flick.content-y + flick.height) ? y + height - flick.height : -flick.content-y),
+            0px,
+            max(0px, page.preferred-height - flick.height));
+    }
+
+    flick := Flickable {
+        width: 100%;
+        height: 100%;
+        content-height: page.preferred-height;
+        content-y <=> SettingsState.scroll-y;
+
+        page := VerticalLayout {
+            padding: Tokens.screen-padding;
+            alignment: start;
+
+            Eyebrow {
+                text: "FLOX";
+            }
+
+            Rectangle {
+                height: Tokens.space-xs;
+            }
+
+            Heading {
+                text: "Settings";
+            }
+
+            Rectangle {
+                height: Tokens.space-sm;
+            }
+
+            Eyebrow {
+                text: "CENTER CHANGE · LEFT RIGHT CYCLE · BACK EXIT";
+                color: Tokens.text-muted;
+            }
+
+            list := VerticalLayout {
+                for row[i] in SettingsState.rows: SettingItem {
+                    header: row.header;
+                    label: row.label;
+                    value: row.value;
+                    index: i;
+                    changed focused => {
+                        if self.focused {
+                            if i == 0 {
+                                flick.content-y = 0px;
+                            } else {
+                                root.reveal(list.y + self.y, self.height + (i + 1 == SettingsState.rows.length ? Tokens.screen-padding : 0px));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if SettingsState.dialog == SettingsDialog.choice: ChoiceDialog {
+        width: 100%;
+        height: 100%;
+        label: "SETTINGS";
+        title: SettingsState.dialog-title;
+        options: SettingsState.dialog-options;
+        current: SettingsState.dialog-current;
+        options-zone: SettingsZones.options;
+        buttons-zone: SettingsZones.buttons;
+    }
+
+    if SettingsState.dialog == SettingsDialog.text: TextDialog {
+        width: 100%;
+        height: 100%;
+        label: "SETTINGS";
+        title: SettingsState.dialog-title;
+        message: SettingsState.dialog-message;
+        text <=> SettingsState.dialog-text;
+        placeholder: SettingsState.dialog-placeholder;
+        secret: SettingsState.dialog-secret;
+        error: SettingsState.dialog-error;
+        field-zone: SettingsZones.field;
+        buttons-zone: SettingsZones.buttons;
+        accepted(text) => {
+            SettingsState.dialog-accepted(text);
+        }
+    }
+
+    if SettingsState.dialog == SettingsDialog.confirm: ConfirmDialog {
+        width: 100%;
+        height: 100%;
+        label: "SETTINGS";
+        title: SettingsState.dialog-title;
+        message: SettingsState.dialog-message;
+        buttons-zone: SettingsZones.buttons;
+    }
 }
