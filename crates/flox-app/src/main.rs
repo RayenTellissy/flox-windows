@@ -2,9 +2,10 @@
 
 //! Builds the runtime, stores and services, then opens the window.
 //!
-//! `flox [--dev-fixtures [PATH]]`: with `--dev-fixtures` the catalog, posters and
-//! library come from a JSON file (default `crates/flox-app/fixtures/browse.json`)
-//! instead of TMDB and Telegram, and watch history goes to a scratch file.
+//! `flox [--dev-fixtures [PATH]] [--dev-play FILE]`: with `--dev-fixtures` the catalog,
+//! posters and library come from a JSON file (default `crates/flox-app/fixtures/browse.json`)
+//! instead of TMDB and Telegram, and watch history goes to a scratch file. `--dev-play`
+//! opens the player on a local file through mpv (the path goes straight to `loadfile`).
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -21,6 +22,7 @@ use flox_core::progress::ProgressStore;
 use flox_core::settings::{Settings, SettingsStore};
 use flox_core::tmdb::Tmdb;
 use flox_core::tools::{self, Tool};
+use flox_player::ffi::MpvLib;
 use flox_sys::dirs::SystemDirs;
 use flox_td::auth::Auth;
 use flox_td::client::{TdClient, TdParams};
@@ -32,9 +34,10 @@ use flox_td::transport::TdTransport;
 #[derive(Debug, Default)]
 struct Args {
     fixtures: Option<PathBuf>,
+    dev_play: Option<PathBuf>,
 }
 
-const USAGE: &str = "usage: flox [--dev-fixtures [PATH]]";
+const USAGE: &str = "usage: flox [--dev-fixtures [PATH]] [--dev-play FILE]";
 
 fn parse_args(args: impl IntoIterator<Item = OsString>) -> anyhow::Result<Args> {
     let mut parsed = Args::default();
@@ -51,6 +54,10 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> anyhow::Result<Args> 
                 parsed.fixtures =
                     Some(path.unwrap_or_else(|| PathBuf::from(flox_app::fixtures::DEFAULT_PATH)));
             }
+            Some("--dev-play") => match args.next() {
+                Some(file) => parsed.dev_play = Some(PathBuf::from(file)),
+                None => anyhow::bail!("--dev-play needs a file\n{USAGE}"),
+            },
             Some("--help" | "-h") => {
                 println!("{USAGE}");
                 std::process::exit(0);
@@ -153,6 +160,27 @@ fn start_telegram(
     )
 }
 
+/// Loads libmpv from the settings override, the app directory or `PATH`.
+fn load_libmpv(settings: &Settings) -> Option<Arc<MpvLib>> {
+    let path_env = std::env::var_os("PATH");
+    let Some(path) = tools::resolve(
+        Tool::LibMpv,
+        &SystemDirs.app_dir(),
+        path_env.as_deref(),
+        settings.libmpv_path.as_deref(),
+    ) else {
+        tracing::warn!("{} not found; the player is off", Tool::LibMpv.file_name());
+        return None;
+    };
+    match MpvLib::load(&path) {
+        Ok(lib) => Some(lib),
+        Err(e) => {
+            tracing::warn!("cannot load {}: {e}", path.display());
+            None
+        }
+    }
+}
+
 /// Offline services from a fixture file. Watch history is seeded into a scratch
 /// file so the real one is never touched.
 fn fixture_services(
@@ -221,6 +249,8 @@ fn main() -> anyhow::Result<()> {
         }
     };
 
+    let player_lib = load_libmpv(&settings.get());
+
     flox_app::run(AppContext {
         runtime,
         paths,
@@ -230,6 +260,7 @@ fn main() -> anyhow::Result<()> {
         td,
         library,
         queue: None,
-        player_lib: None,
+        player_lib,
+        dev_play: args.dev_play,
     })
 }

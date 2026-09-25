@@ -1,9 +1,330 @@
+// The player: a transparent screen over the mpv underlay (drawn into the window's
+// framebuffer before Slint paints), with the flox overlay on top: the scrim, BACK, the
+// eyebrow and title, the seek bar with its buffered band, mono times, the button row,
+// the 480 px tracks panel, the hint, the PLAYBACK FAILED stamp and the ASK dialog.
+// State and focus come from Rust (src/player/view.rs); nothing here animates.
 import { Tokens } from "../tokens.slint";
-import { ScreenPlaceholder } from "placeholder.slint";
+import {
+    FocusState, FocusArea, FocusRing, Eyebrow, Heading, IconButton, SeekBar, Hint, StateStamp,
+    DialogPanel, FilledButton, GhostButton
+} from "../components/all.slint";
 
-export component PlayerScreen inherits ScreenPlaceholder {
-    background: Tokens.pure-black;
-    eyebrow: "PLAYER";
-    heading: "Player";
-    caption: "Video plays under the overlay.";
+// Mirrors the zone constants in src/player/view.rs.
+export global PlayerZones {
+    out property <int> back: 40;
+    out property <int> seek: 41;
+    // Indices: 0 rewind, 1 play/pause, 2 forward, 3 volume down, 4 volume up,
+    // 5 audio, 6 subtitles, 7 quality, 8 next.
+    out property <int> buttons: 42;
+    out property <int> tracks: 43;
+    // 0 RESUME, 1 START OVER.
+    out property <int> resume: 44;
+}
+
+export global PlayerState {
+    // A stamp in the middle: LOADING, PLAYBACK FAILED, or empty.
+    in property <string> stamp;
+    in property <bool> overlay;
+    in property <bool> asking;
+    in property <string> resume-label;
+    in property <string> eyebrow;
+    in property <string> title;
+    in property <string> position: "00:00";
+    in property <string> duration: "--:--";
+    // Seconds.
+    in property <float> time;
+    in property <float> length;
+    in property <float> buffered;
+    in property <bool> paused;
+    in property <bool> audio-available;
+    in property <bool> subtitles-available;
+    in property <bool> quality-available;
+    in property <bool> next-available;
+    in property <bool> tracks-open;
+    in property <string> tracks-heading;
+    in property <[string]> tracks;
+    in property <int> tracks-selected;
+    in property <string> hint;
+
+    // The pointer moved over the video area.
+    callback pointer-moved(x: length, y: length);
+    // A primary click on the video (not on a control).
+    callback video-clicked();
+    // A right click anywhere (MENU).
+    callback menu-clicked();
+    // The seek bar was clicked at a fraction of its length.
+    callback seek(fraction: float);
+}
+
+component TrackRow inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    in property <int> index;
+    property <bool> focused: FocusState.zone == PlayerZones.tracks && FocusState.index == root.index;
+
+    min-height: 48px;
+    background: transparent;
+
+    HorizontalLayout {
+        padding-left: Tokens.space-md;
+        padding-right: Tokens.space-md;
+        padding-top: Tokens.space-sm;
+        padding-bottom: Tokens.space-sm;
+        spacing: Tokens.space-md;
+        alignment: start;
+
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 10px;
+                height: 10px;
+                background: root.selected ? Tokens.text-primary : transparent;
+                border-width: root.selected ? 0 : Tokens.hairline-width;
+                border-color: Tokens.hairline-strong;
+            }
+        }
+
+        Text {
+            text: root.label;
+            font-family: Tokens.font-mono;
+            font-size: Tokens.caption-size;
+            color: root.selected ? Tokens.text-primary : Tokens.text-secondary;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+    }
+
+    FocusArea {
+        zone: PlayerZones.tracks;
+        index: root.index;
+    }
+
+    FocusRing {
+        focused: root.focused;
+    }
+}
+
+component PlayerButton inherits IconButton {
+    zone: PlayerZones.buttons;
+}
+
+export component PlayerScreen inherits Rectangle {
+    // The video shows through: the window clears to pure black and mpv draws first.
+    background: transparent;
+
+    // The video area: pointer moves show the overlay, a click toggles play, a right
+    // click is MENU. Controls drawn later sit above it.
+    TouchArea {
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.move {
+                PlayerState.pointer-moved(self.mouse-x, self.mouse-y);
+            } else if event.kind == PointerEventKind.down && event.button == PointerEventButton.right {
+                PlayerState.menu-clicked();
+            }
+        }
+        clicked => {
+            PlayerState.video-clicked();
+        }
+    }
+
+    if PlayerState.overlay: Rectangle {
+        background: Tokens.scrim;
+    }
+
+    if PlayerState.overlay: IconButton {
+        x: Tokens.screen-padding;
+        y: Tokens.screen-padding;
+        icon: @image-url("../../../../assets/icons/ic_player_back.png");
+        zone: PlayerZones.back;
+        index: 0;
+    }
+
+    if PlayerState.overlay: VerticalLayout {
+        x: 0;
+        y: parent.height - self.preferred-height;
+        width: parent.width;
+        height: self.preferred-height;
+        padding: Tokens.screen-padding;
+        spacing: 0;
+
+        Eyebrow {
+            text: PlayerState.eyebrow;
+        }
+
+        Rectangle {
+            height: Tokens.space-xs;
+        }
+
+        Heading {
+            text: PlayerState.title;
+            overflow: elide;
+        }
+
+        Rectangle {
+            height: Tokens.space-lg;
+        }
+
+        SeekBar {
+            position: PlayerState.time;
+            duration: PlayerState.length;
+            buffered: PlayerState.buffered;
+            zone: PlayerZones.seek;
+            index: 0;
+            seek(fraction) => {
+                PlayerState.seek(fraction);
+            }
+        }
+
+        HorizontalLayout {
+            padding-top: Tokens.space-xs;
+            padding-left: Tokens.space-xs;
+            padding-right: Tokens.space-xs;
+
+            Eyebrow {
+                text: PlayerState.position;
+                font-weight: Tokens.weight-medium;
+                color: Tokens.text-primary;
+                horizontal-stretch: 1;
+            }
+
+            Eyebrow {
+                text: PlayerState.duration;
+                horizontal-alignment: right;
+            }
+        }
+
+        HorizontalLayout {
+            padding-top: Tokens.space-md;
+            alignment: center;
+            spacing: 0;
+
+            PlayerButton {
+                index: 0;
+                icon: @image-url("../../../../assets/icons/ic_player_rewind.png");
+            }
+            PlayerButton {
+                index: 1;
+                icon: PlayerState.paused
+                    ? @image-url("../../../../assets/icons/ic_player_play.png")
+                    : @image-url("../../../../assets/icons/ic_player_pause.png");
+            }
+            PlayerButton {
+                index: 2;
+                icon: @image-url("../../../../assets/icons/ic_player_forward.png");
+            }
+
+            Rectangle {
+                width: Tokens.space-xl;
+            }
+
+            PlayerButton {
+                index: 3;
+                icon: @image-url("../../../../assets/icons/ic_player_volume_down.svg");
+            }
+            PlayerButton {
+                index: 4;
+                icon: @image-url("../../../../assets/icons/ic_player_volume_up.svg");
+            }
+
+            if PlayerState.audio-available || PlayerState.subtitles-available || PlayerState.quality-available || PlayerState.next-available: Rectangle {
+                width: Tokens.space-xl;
+            }
+
+            if PlayerState.audio-available: PlayerButton {
+                index: 5;
+                icon: @image-url("../../../../assets/icons/ic_player_audio.svg");
+            }
+            if PlayerState.subtitles-available: PlayerButton {
+                index: 6;
+                icon: @image-url("../../../../assets/icons/ic_player_subtitles.png");
+            }
+            if PlayerState.quality-available: PlayerButton {
+                index: 7;
+                icon: @image-url("../../../../assets/icons/ic_player_quality.svg");
+            }
+            if PlayerState.next-available: PlayerButton {
+                index: 8;
+                icon: @image-url("../../../../assets/icons/ic_player_next.png");
+            }
+        }
+    }
+
+    if PlayerState.overlay && PlayerState.tracks-open: Rectangle {
+        x: parent.width - self.width - Tokens.screen-padding;
+        y: Tokens.screen-padding;
+        width: Tokens.tracks-panel-width;
+        height: self.preferred-height;
+        background: Tokens.card;
+        border-width: Tokens.hairline-width;
+        border-color: Tokens.hairline;
+
+        // Swallows clicks so they don't reach the video.
+        TouchArea { }
+
+        VerticalLayout {
+            padding: Tokens.space-md;
+            spacing: Tokens.space-md;
+
+            HorizontalLayout {
+                padding-left: Tokens.space-md;
+                padding-top: Tokens.space-xs;
+
+                Eyebrow {
+                    text: PlayerState.tracks-heading;
+                }
+            }
+
+            VerticalLayout {
+                for label[i] in PlayerState.tracks: TrackRow {
+                    label: label;
+                    index: i;
+                    selected: i == PlayerState.tracks-selected;
+                }
+            }
+        }
+    }
+
+    if PlayerState.stamp != "": StateStamp {
+        text: PlayerState.stamp;
+    }
+
+    Hint {
+        x: Tokens.screen-padding;
+        y: parent.height - Tokens.screen-padding - self.preferred-height;
+        width: parent.width - 2 * Tokens.screen-padding;
+        text: PlayerState.hint;
+    }
+
+    // The ASK dialog: a card over the dimmed screen that swallows the pointer behind it.
+    if PlayerState.asking: Rectangle {
+        background: #000000B3;
+
+        TouchArea { }
+
+        DialogPanel {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 560px;
+            height: self.preferred-height;
+            label: "RESUME";
+            title: PlayerState.resume-label;
+
+            HorizontalLayout {
+                spacing: Tokens.space-md;
+                alignment: start;
+
+                FilledButton {
+                    text: "RESUME";
+                    zone: PlayerZones.resume;
+                    index: 0;
+                }
+                GhostButton {
+                    text: "START OVER";
+                    zone: PlayerZones.resume;
+                    index: 1;
+                }
+            }
+        }
+    }
 }

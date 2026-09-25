@@ -15,10 +15,11 @@ import { QueueScreen } from "screens/queue.slint";
 import { LibraryScreen } from "screens/library.slint";
 import { SettingsScreen } from "screens/settings.slint";
 import { LoginScreen } from "screens/login.slint";
-import { PlayerScreen } from "screens/player.slint";
+import { PlayerScreen, PlayerState, PlayerZones } from "screens/player.slint";
 
 export { FocusState } from "components/focus.slint";
 export { HomeState, HomeZones, Card, SearchState, SearchZones, DetailsState, DetailsZones, Season, Episode }
+export { PlayerState, PlayerZones }
 
 export enum Screen {
     home,
@@ -37,6 +38,8 @@ export component AppWindow inherits Window {
 
     // Every key press, before the focused element sees it. True when Rust handled it.
     callback key(text: string, control: bool, shift: bool, alt: bool, meta: bool, repeat: bool) -> bool;
+    // Every key release. True when Rust handled it.
+    callback key-released(text: string) -> bool;
 
     title: "Flox";
     min-width: 1280px;
@@ -52,6 +55,9 @@ export component AppWindow inherits Window {
         height: 100%;
         key(text, control, shift, alt, meta, repeat) => {
             root.key(text, control, shift, alt, meta, repeat)
+        }
+        key-up(text) => {
+            root.key-released(text)
         }
 
         if root.screen == Screen.home: HomeScreen {

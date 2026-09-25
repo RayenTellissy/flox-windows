@@ -31,13 +31,15 @@ use flox_player::ffi::MpvLib;
 use flox_rip::queue::Queue;
 use flox_td::auth::{Auth, AuthState};
 use flox_td::client::TdClient;
-use flox_td::library::{Library, LibraryIndex};
+use flox_td::library::{Entry, Library, LibraryIndex};
 use slint::{ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, VecModel};
 
 use crate::focus::{key_action, Direction, Focus, FocusGraph, KeyAction, Modifiers, ZoneId};
+use crate::player::view::{LibraryPrints, PlayerDeps, PlayerView, Underlay};
 use crate::router::{PlayRequest, Route, Router, Transition};
 use crate::ui::{
-    AppWindow, Card, DetailsState, Episode, FocusState, HomeState, Screen, SearchState, Season,
+    AppWindow, Card, DetailsState, Episode, FocusState, HomeState, PlayerState, Screen,
+    SearchState, Season,
 };
 use crate::vm::{details as dvm, home as hvm, search as svm};
 
@@ -99,6 +101,10 @@ pub trait LibraryView: Send + Sync {
     fn titles(&self) -> Vec<(TmdbId, MediaType)>;
     /// The prints of one movie or episode.
     fn prints(&self, key: EpisodeKey) -> Vec<Print>;
+    /// The complete prints of one movie or episode, tallest first (what the player plays).
+    fn entries(&self, _key: EpisodeKey) -> Vec<Entry> {
+        Vec::new()
+    }
 }
 
 /// The qualities uploaded for `key`, in index order (tallest first).
@@ -134,6 +140,10 @@ impl LibraryView for LibraryIndex {
                 newest_message_id: e.newest_message_id,
             })
             .collect()
+    }
+
+    fn entries(&self, key: EpisodeKey) -> Vec<Entry> {
+        self.entries_for(key).to_vec()
     }
 }
 
@@ -209,6 +219,8 @@ pub struct AppContext {
     pub queue: Option<Arc<Queue>>,
     /// Present when libmpv resolves.
     pub player_lib: Option<Arc<MpvLib>>,
+    /// `--dev-play <file>`: open the player on a local file at startup.
+    pub dev_play: Option<std::path::PathBuf>,
 }
 
 // ---------------------------------------------------------------------------
@@ -405,6 +417,8 @@ pub struct Shell {
     search_cards: CardList,
     seasons: Rc<VecModel<Season>>,
     episodes: Rc<VecModel<Episode>>,
+    player: RefCell<Option<Rc<PlayerView>>>,
+    player_deps: RefCell<Option<Rc<PlayerDeps>>>,
 }
 
 fn modifiers(control: bool, shift: bool, alt: bool, meta: bool) -> Modifiers {
@@ -452,6 +466,8 @@ impl Shell {
             search_cards: CardList::new(),
             seasons: Rc::new(VecModel::default()),
             episodes: Rc::new(VecModel::default()),
+            player: RefCell::new(None),
+            player_deps: RefCell::new(None),
         });
         shell.bind(ui);
         shell
@@ -470,8 +486,42 @@ impl Shell {
         details.set_episodes(ModelRc::from(self.episodes.clone()));
 
         let shell = self.clone();
-        ui.on_key(move |text, control, shift, alt, meta, _repeat| {
+        ui.on_key(move |text, control, shift, alt, meta, repeat| {
+            if let Some(player) = shell.player_view() {
+                return player.key(&text, modifiers(control, shift, alt, meta), repeat);
+            }
             shell.key(&text, modifiers(control, shift, alt, meta))
+        });
+        let shell = self.clone();
+        ui.on_key_released(move |text| {
+            shell
+                .player_view()
+                .is_some_and(|player| player.key_released(&text))
+        });
+        let player = ui.global::<PlayerState>();
+        let shell = self.clone();
+        player.on_pointer_moved(move |x, y| {
+            if let Some(player) = shell.player_view() {
+                player.pointer_moved(x, y);
+            }
+        });
+        let shell = self.clone();
+        player.on_video_clicked(move || {
+            if let Some(player) = shell.player_view() {
+                player.video_clicked();
+            }
+        });
+        let shell = self.clone();
+        player.on_menu_clicked(move || {
+            if let Some(player) = shell.player_view() {
+                player.menu_clicked();
+            }
+        });
+        let shell = self.clone();
+        player.on_seek(move |fraction| {
+            if let Some(player) = shell.player_view() {
+                player.seek(fraction);
+            }
         });
 
         let focus = ui.global::<FocusState>();
@@ -685,12 +735,20 @@ impl Shell {
     }
 
     fn hover(&self, zone: ZoneId, index: usize) {
+        if let Some(player) = self.player_view() {
+            player.hover(zone, index);
+            return;
+        }
         if self.with_graph(|g| g.hover(zone, index)).is_some() {
             self.sync_focus();
         }
     }
 
     fn click(self: &Rc<Self>, zone: ZoneId, index: usize) {
+        if let Some(player) = self.player_view() {
+            player.click(zone, index);
+            return;
+        }
         if let Some(focus) = self.with_graph(|g| g.click(zone, index)) {
             self.sync_focus();
             self.activate(focus);
@@ -767,6 +825,12 @@ impl Shell {
     fn closed(&self, route: &Route) {
         match route {
             Route::Search => self.search.borrow_mut().debounce.reset(),
+            Route::Player(_) => {
+                let player = self.player.borrow_mut().take();
+                if let Some(player) = player {
+                    player.close();
+                }
+            }
             Route::Details { .. } => {
                 let mut d = self.details.borrow_mut();
                 d.generation = d.generation.wrapping_add(1);
@@ -799,10 +863,68 @@ impl Shell {
                     self.refresh_details_progress();
                 }
             }
-            Route::Player(request) => tracing::info!("play {request:?}"),
+            Route::Player(request) => {
+                self.open_player(*request);
+                return;
+            }
             _ => {}
         }
         self.sync_focus();
+    }
+
+    // -- player -------------------------------------------------------------
+
+    /// What the player uses beyond the services (mpv, Telegram, the underlay).
+    pub fn set_player_deps(&self, deps: PlayerDeps) {
+        *self.player_deps.borrow_mut() = Some(Rc::new(deps));
+    }
+
+    /// The open player, while its screen shows.
+    pub fn player_view(&self) -> Option<Rc<PlayerView>> {
+        if self.screen() != Screen::Player {
+            return None;
+        }
+        self.player.borrow().clone()
+    }
+
+    fn open_player(self: &Rc<Self>, request: PlayRequest) {
+        let Some(ui) = self.ui.upgrade() else {
+            return;
+        };
+        tracing::info!("play {request:?}");
+        let deps = self
+            .player_deps
+            .borrow()
+            .clone()
+            .unwrap_or_else(|| Rc::new(PlayerDeps::offline()));
+        let prints = LibraryPrints::new(
+            self.home.borrow().status.ready(),
+            self.library.borrow().clone(),
+        );
+        let shell = Rc::downgrade(self);
+        let on_exit = Box::new(move || {
+            if let Some(shell) = shell.upgrade() {
+                if shell.screen() == Screen::Player {
+                    shell.back();
+                }
+            }
+        });
+        let view = PlayerView::open(
+            &ui,
+            self.services.clone(),
+            self.exec.clone(),
+            deps,
+            request,
+            prints,
+            on_exit,
+        );
+        let previous = self.player.borrow_mut().replace(view);
+        if let Some(previous) = previous {
+            previous.close();
+        }
+        if let Some(player) = self.player.borrow().as_ref() {
+            player.render();
+        }
     }
 
     // -- home ---------------------------------------------------------------
@@ -1396,7 +1518,36 @@ pub fn run(ctx: AppContext) -> anyhow::Result<()> {
         ctx.services.clone(),
         Exec::Live(ctx.runtime.handle().clone()),
     );
+    let underlay = match Underlay::install(&ui) {
+        Ok(underlay) => Some(underlay),
+        Err(e) => {
+            tracing::warn!("no video underlay: {e}");
+            None
+        }
+    };
+    shell.set_player_deps(PlayerDeps {
+        mpv_lib: ctx.player_lib.clone(),
+        td: ctx
+            .td
+            .clone()
+            .map(|td| crate::player::mpv_engine::TdAccess {
+                transport: td,
+                runtime: ctx.runtime.handle().clone(),
+            }),
+        library: ctx.library.clone(),
+        runtime: Some(ctx.runtime.handle().clone()),
+        sniffer: flox_web::platform_sniffer(flox_web::assets::ScriptOptions::default()),
+        dev_file: ctx.dev_play.clone(),
+        underlay,
+    });
     shell.start();
+    if ctx.dev_play.is_some() {
+        shell.navigate(Route::Player(PlayRequest {
+            key: EpisodeKey::movie(0),
+            start_at: None,
+            library_only: false,
+        }));
+    }
     ui.show()?;
     apply_ui_scale(&ui, ctx.settings.get().ui_scale);
     slint::run_event_loop()?;
