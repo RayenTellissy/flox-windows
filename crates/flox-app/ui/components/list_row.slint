@@ -1,0 +1,78 @@
+// A card row for Settings, Queue and the Library manager: label left (Caption in
+// primary), mono value right, an optional muted detail line and an optional 1 px
+// progress line. The ring replaces the hairline when focused.
+import { Tokens } from "../tokens.slint";
+import { FocusState, FocusArea, FocusRing } from "focus.slint";
+import { Caption, Eyebrow } from "text.slint";
+import { ProgressLine } from "progress.slint";
+
+export component ListRow inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <color> value-color: Tokens.text-secondary;
+    in property <string> detail;
+    // 0..1 draws the progress line (queue jobs); negative hides it.
+    in property <float> progress: -1;
+    in property <bool> enabled: true;
+    in property <int> zone: -1;
+    in property <int> index: 0;
+    in property <bool> force-focus;
+    out property <bool> focused: root.force-focus || (root.zone >= 0 && FocusState.zone == root.zone && FocusState.index == root.index);
+
+    min-height: 56px;
+    background: Tokens.card;
+    border-radius: 0;
+
+    VerticalLayout {
+        padding-left: Tokens.space-md;
+        padding-right: Tokens.space-md;
+        padding-top: Tokens.space-sm;
+        padding-bottom: Tokens.space-sm;
+        spacing: Tokens.space-xxs;
+        alignment: center;
+
+        HorizontalLayout {
+            spacing: Tokens.space-lg;
+
+            Caption {
+                text: root.label;
+                color: root.enabled ? Tokens.text-primary : Tokens.text-disabled;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+
+            if root.value != "": Eyebrow {
+                text: root.value;
+                color: root.enabled ? root.value-color : Tokens.text-disabled;
+                vertical-alignment: center;
+                horizontal-alignment: right;
+                max-width: 480px;
+                horizontal-stretch: 0;
+            }
+        }
+
+        if root.detail != "": Eyebrow {
+            text: root.detail;
+            color: Tokens.text-muted;
+        }
+
+        if root.progress >= 0: VerticalLayout {
+            padding-top: Tokens.space-xs;
+
+            ProgressLine {
+                fraction: root.progress;
+            }
+        }
+    }
+
+    FocusArea {
+        zone: root.zone;
+        index: root.index;
+    }
+
+    FocusRing {
+        focused: root.focused;
+        rest: Tokens.hairline;
+    }
+}

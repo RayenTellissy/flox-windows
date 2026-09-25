@@ -1,0 +1,45 @@
+// Type roles from DESIGN.dark.md. Uppercasing is done in Rust.
+import { Tokens } from "../tokens.slint";
+
+// Geist Mono 14, +0.071em, secondary.
+export component Eyebrow inherits Text {
+    font-family: Tokens.font-mono;
+    font-size: Tokens.eyebrow-size;
+    letter-spacing: Tokens.eyebrow-letter-spacing;
+    color: Tokens.text-secondary;
+    overflow: elide;
+}
+
+// Geist 18, secondary.
+export component Caption inherits Text {
+    font-family: Tokens.font-sans;
+    font-size: Tokens.caption-size;
+    color: Tokens.text-secondary;
+}
+
+// Geist 22, line spacing 1.4 (Android lineSpacingMultiplier).
+export component Body inherits Text {
+    font-family: Tokens.font-sans;
+    font-size: Tokens.body-size;
+    line-height-factor: Tokens.body-line-height;
+    color: Tokens.text-primary;
+}
+
+// Geist Medium 36, -0.03em.
+export component Heading inherits Text {
+    font-family: Tokens.font-sans;
+    font-weight: Tokens.weight-medium;
+    font-size: Tokens.heading-size;
+    letter-spacing: Tokens.heading-letter-spacing;
+    line-height-factor: Tokens.heading-line-height;
+    color: Tokens.text-primary;
+}
+
+// Geist Medium 56, -0.05em.
+export component Display inherits Text {
+    font-family: Tokens.font-sans;
+    font-weight: Tokens.weight-medium;
+    font-size: Tokens.display-size;
+    letter-spacing: Tokens.display-letter-spacing;
+    color: Tokens.text-primary;
+}

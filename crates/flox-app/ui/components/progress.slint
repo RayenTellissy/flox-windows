@@ -1,0 +1,20 @@
+// Flat progress: a filled band at `fraction` of the width over an optional
+// hairline track. 1 px for queue jobs, 2 px (no track) under posters.
+import { Tokens } from "../tokens.slint";
+
+export component ProgressLine inherits Rectangle {
+    in property <float> fraction;
+    in property <length> thickness: Tokens.hairline-width;
+    in property <bool> track: true;
+
+    height: root.thickness;
+    background: root.track ? Tokens.hairline : transparent;
+
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width * max(0, min(1, root.fraction));
+        height: parent.height;
+        background: Tokens.text-primary;
+    }
+}

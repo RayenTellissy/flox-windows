@@ -1,0 +1,85 @@
+// The player seek bar (Android SeekBarView): 32 px tall, 8 px side padding, a 2 px
+// hairline-strong track, the buffered band in disabled grey, the played band in
+// white, and a 4×16 block thumb only while focused. Left/Right scrubbing is handled
+// in Rust; a click seeks to the clicked fraction through `seek`.
+import { Tokens } from "../tokens.slint";
+import { FocusState, FocusRing } from "focus.slint";
+
+export component SeekBar inherits Rectangle {
+    // Seconds.
+    in property <float> position;
+    in property <float> duration;
+    in property <float> buffered;
+    in property <int> zone: -1;
+    in property <int> index: 0;
+    in property <bool> force-focus;
+    out property <bool> focused: root.force-focus || (root.zone >= 0 && FocusState.zone == root.zone && FocusState.index == root.index);
+
+    callback seek(fraction: float);
+
+    property <length> pad: Tokens.space-xs;
+    property <length> span: root.width - 2 * root.pad;
+    property <length> mid: root.height / 2;
+    property <float> played: root.duration > 0 ? max(0, min(1, root.position / root.duration)) : 0;
+    property <float> loaded: root.duration > 0 ? max(0, min(1, root.buffered / root.duration)) : 0;
+
+    height: 32px;
+    background: transparent;
+    border-radius: 0;
+
+    Rectangle {
+        x: root.pad;
+        y: root.mid - 1px;
+        width: root.span;
+        height: 2px;
+        background: Tokens.hairline-strong;
+    }
+
+    Rectangle {
+        x: root.pad;
+        y: root.mid - 1px;
+        width: root.span * root.loaded;
+        height: 2px;
+        background: Tokens.text-disabled;
+    }
+
+    Rectangle {
+        x: root.pad;
+        y: root.mid - 1px;
+        width: root.span * root.played;
+        height: 2px;
+        background: Tokens.text-primary;
+    }
+
+    if root.focused && root.duration > 0: Rectangle {
+        x: root.pad + root.span * root.played - 2px;
+        y: root.mid - 8px;
+        width: 4px;
+        height: 16px;
+        background: Tokens.text-primary;
+    }
+
+    TouchArea {
+        pointer-event(event) => {
+            if root.zone >= 0 {
+                if event.kind == PointerEventKind.move {
+                    FocusState.hovered(root.zone, root.index);
+                } else if event.kind == PointerEventKind.down && event.button == PointerEventButton.right {
+                    FocusState.menu(root.zone, root.index);
+                }
+            }
+        }
+        clicked => {
+            if root.span > 0 {
+                root.seek(max(0, min(1, (self.pressed-x - root.pad) / root.span)));
+            }
+            if root.zone >= 0 {
+                FocusState.clicked(root.zone, root.index);
+            }
+        }
+    }
+
+    FocusRing {
+        focused: root.focused;
+    }
+}

@@ -1,0 +1,71 @@
+// A titled horizontal row: mono label (with an optional 24 px icon) 12 px above a
+// horizontal Flickable of items 16 px apart. Screens stack rows 32 px apart.
+// `viewport-x` is written from Rust (`focus::Strip::ensure_visible`, negated) to
+// keep the focused item in view; the wheel scrolls it too. A non-empty `state`
+// shows a StateStamp over the list area instead (LOADING, NOTHING UPLOADED YET).
+import { Tokens } from "../tokens.slint";
+import { Eyebrow } from "text.slint";
+import { StateStamp } from "stamps.slint";
+
+export component Row inherits VerticalLayout {
+    in property <string> label;
+    in property <image> icon;
+    in property <string> state;
+    // The list area's height when it is empty or shows a state: one poster.
+    in property <length> min-list-height: Tokens.poster-height;
+    in-out property <length> viewport-x <=> list.content-x;
+    out property <length> viewport-width: list.width;
+
+    spacing: Tokens.space-sm;
+    alignment: start;
+
+    HorizontalLayout {
+        spacing: Tokens.space-xs;
+        alignment: start;
+
+        if root.icon.width > 0: VerticalLayout {
+            alignment: center;
+
+            Image {
+                source: root.icon;
+                colorize: Tokens.text-secondary;
+                width: 24px;
+                height: 24px;
+                image-fit: contain;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+
+            Eyebrow {
+                text: root.label;
+            }
+        }
+    }
+
+    Rectangle {
+        height: max(root.min-list-height, items.preferred-height);
+
+        list := Flickable {
+            width: 100%;
+            height: 100%;
+            content-height: items.preferred-height;
+            content-width: items.preferred-width;
+            visible: root.state == "";
+
+            items := HorizontalLayout {
+                spacing: Tokens.space-md;
+                alignment: start;
+
+                @children
+            }
+        }
+
+        if root.state != "": StateStamp {
+            width: 100%;
+            height: 100%;
+            text: root.state;
+        }
+    }
+}
