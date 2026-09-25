@@ -1,5 +1,7 @@
 //! What `main` starts besides the window, and what rebuilds it while the app runs.
 //!
+//! - [`sweep_temp`] empties the Flox temp folder at launch (job leftovers and the
+//!   WebView2 profiles).
 //! - [`start_telegram`] loads tdjson and starts the one [`TdClient`] when the API id
 //!   and hash are set; [`start_queue`] builds the upload queue over it once ffmpeg and
 //!   ffprobe resolve.
@@ -12,7 +14,7 @@
 //!   tdjson missing) it starts the stack and hands it to the shell.
 
 use std::cell::RefCell;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
@@ -331,10 +333,50 @@ impl Integration {
     }
 }
 
+/// True when `root` is a folder Flox owns under the system temp folder, safe to empty:
+/// not the temp folder itself, not one of its ancestors, and named `flox` or `temp`
+/// (`FLOX_HOME\temp` on development builds).
+pub fn is_flox_temp(root: &Path, system_temp: &Path) -> bool {
+    let named = root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.eq_ignore_ascii_case("flox") || n.eq_ignore_ascii_case("temp"));
+    named && root != system_temp && !system_temp.starts_with(root)
+}
+
+/// Empties the job temp root (`%TEMP%\flox`: leftover job folders and the WebView2
+/// profiles under `webview2\`) and the WebView2 profile folder `flox-web` uses when
+/// it sits elsewhere. Runs at launch, before anything writes there.
+pub fn sweep_temp(paths: &AppPaths) {
+    let system_temp = std::env::temp_dir();
+    if is_flox_temp(&paths.temp, &system_temp) {
+        if let Err(e) = flox_rip::temp::sweep(&paths.temp) {
+            tracing::warn!("temp sweep of {}: {e}", paths.temp.display());
+        }
+    } else {
+        tracing::warn!("not sweeping {}: not a Flox folder", paths.temp.display());
+    }
+    if let Some(webview2) = webview2_root() {
+        if !webview2.starts_with(&paths.temp) {
+            match std::fs::remove_dir_all(&webview2) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => tracing::warn!("cannot remove {}: {e}", webview2.display()),
+            }
+        }
+    }
+}
+
+/// `%TEMP%\flox\webview2`, the parent of every WebView2 profile the app creates.
+fn webview2_root() -> Option<PathBuf> {
+    let profile = flox_web::host::default_user_data("sniffer");
+    let root = profile.parent()?.to_path_buf();
+    let owner = root.parent()?;
+    is_flox_temp(owner, &std::env::temp_dir()).then_some(root)
+}
+
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
 
     #[test]
@@ -365,5 +407,48 @@ mod tests {
         assert_eq!(p.files_dir, PathBuf::from("/d/tdlib-files"));
         assert_eq!(p.app_version, flox_core::VERSION);
         assert!(!p.device_model.is_empty());
+    }
+
+    #[test]
+    fn only_flox_folders_are_swept() {
+        let sys = Path::new("/var/tmp");
+        assert!(is_flox_temp(Path::new("/var/tmp/flox"), sys));
+        assert!(is_flox_temp(Path::new("/home/me/.flox/temp"), sys));
+        assert!(!is_flox_temp(Path::new("/var/tmp"), sys), "the temp folder");
+        assert!(!is_flox_temp(Path::new("/var"), sys), "an ancestor");
+        assert!(!is_flox_temp(Path::new("/"), sys));
+        assert!(!is_flox_temp(Path::new("/var/tmp/other"), sys));
+        #[cfg(windows)]
+        {
+            let win = Path::new(r"C:\Users\me\AppData\Local\Temp");
+            assert!(is_flox_temp(
+                Path::new(r"C:\Users\me\AppData\Local\Temp\flox"),
+                win
+            ));
+        }
+    }
+
+    #[test]
+    fn sweep_empties_the_flox_temp_folder_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("flox");
+        let job = root.join("0f0e0d0c-0000-0000-0000-000000000000");
+        std::fs::create_dir_all(job.join("parts")).unwrap();
+        std::fs::write(job.join("media.mp4"), b"x").unwrap();
+        std::fs::create_dir_all(root.join("webview2").join("sniffer")).unwrap();
+        let neighbour = dir.path().join("keep.txt");
+        std::fs::write(&neighbour, b"y").unwrap();
+        let paths = AppPaths {
+            settings: dir.path().join("settings.json"),
+            progress: dir.path().join("progress.json"),
+            tdlib_db: dir.path().join("db"),
+            tdlib_files: dir.path().join("files"),
+            image_cache: dir.path().join("images"),
+            temp: root.clone(),
+        };
+        sweep_temp(&paths);
+        assert!(root.is_dir());
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
+        assert!(neighbour.is_file());
     }
 }

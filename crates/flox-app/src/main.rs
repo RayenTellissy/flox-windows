@@ -16,7 +16,7 @@ use flox_app::app::{AppContext, Services, Telegram};
 use flox_app::fixtures::{
     FixtureCatalog, FixtureImages, FixtureLibrary, FixtureLibrarySource, Fixtures,
 };
-use flox_app::launch::{start_queue, start_telegram};
+use flox_app::launch::{start_queue, start_telegram, sweep_temp};
 use flox_core::images::{ImageCache, DISK_BYTES, MEM_BYTES};
 use flox_core::paths::{AppPaths, Dirs};
 use flox_core::progress::ProgressStore;
@@ -153,6 +153,8 @@ fn main() -> anyhow::Result<()> {
         .thread_name("flox-rt")
         .build()?;
     let paths = AppPaths::from_dirs(&SystemDirs);
+    // Nothing has written to the temp folder yet: drop what an earlier run left.
+    sweep_temp(&paths);
     let settings = open_settings(&paths);
 
     if let Err(e) = flox_sys::notify::ensure_app_identity() {
