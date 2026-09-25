@@ -85,3 +85,22 @@ in the log. The sniffer uses `%TEMP%\flox\webview2\sniffer` and the page player
 - [ ] Progress is saved from the page's ticks (Continue Watching shows the right time after leaving the page player).
 - [ ] Leaving the player stops the page's sound at once and the WebView disappears.
 - [ ] The page player is not muted even while a sniff runs in the muted sniffer at the same time.
+
+## Player (mpv underlay)
+
+Run with `FLOX_LOG=info` so mpv's `hwdec-current` and the `frame-drop-count` line (logged when
+playback stops) show in the log. `flox.exe --dev-play <file>` opens the player on a local file
+without TMDB or Telegram.
+
+- [ ] Library playback of a split upload (2 parts): the video starts under the overlay, the overlay (scrim, title, seek bar, times, buttons) draws on top of the picture, and the seek bar's grey buffered band grows ahead of the white played band.
+- [ ] Seek across the part boundary of that upload (hold RIGHT on the seek bar, then click past the boundary). Playback continues without PLAYBACK FAILED and the audio stays in sync.
+- [ ] Quality switch: on a title uploaded in two qualities, QUALITY restarts the other print at the same position with the hint `QUALITY · <label>`, and the next playback of that title uses it.
+- [ ] Audio labels: AUDIO opens the 480 px panel with one row per language/codec/channels (for example `English · E-AC3 · 5.1`); picking a row switches the track and shows `AUDIO · …`.
+- [ ] Subtitles: a library print with a subtitle offers SUBTITLES; M (or a right click) cycles through the tracks and `SUBTITLES OFF`, and the text is readable at each SUBTITLE SIZE.
+- [ ] Loudness boost on (Settings) is audibly louder than off on the same scene, with no clipping on loud passages.
+- [ ] Autoplay next: with AUTOPLAY NEXT on, the end of an episode starts the next one (`NEXT · S1 E4`); with it off, the NEXT button appears on the overlay instead.
+- [ ] The log shows `hwdec-current: <api>` (for example `d3d11va` or `dxva2`), not `no`, for a 4K HEVC 10-bit file.
+- [ ] Play 60 s of a 4K HEVC 10-bit file and close the player. The `frame-drop-count N of M frames` line shows N below 1 % of M.
+- [ ] Space, ENTER, arrows (with acceleration while held), Esc/Backspace, M, Ctrl+R and F11 behave as in the plan's key table; moving the mouse shows the overlay and clicking the video toggles play.
+- [ ] While the player is open `powercfg /requests` lists `flox.exe` under `DISPLAY`; after closing it, `DISPLAY` no longer lists it.
+- [ ] Rename `libmpv-2.dll` away and play something: the player shows PLAYBACK FAILED with `LIBMPV NOT FOUND` (or falls back to the page player on a VidLink title) instead of crashing.
