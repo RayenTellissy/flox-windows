@@ -1,1 +1,1 @@
-window.FloxBridge = { onMessage: function (s) { window.webkit.messageHandlers.flox.postMessage(String(s)) } };
+window.FloxBridge = { onMessage: function (s) { try { window.chrome.webview.postMessage(String(s)) } catch (e) {} } };
