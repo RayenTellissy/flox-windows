@@ -1,5 +1,5 @@
 ;(function () {
-  var post = function (t, d) { try { window.webkit.messageHandlers.flox.postMessage(JSON.stringify({ type: t, data: d })) } catch (e) {} }
+  var post = function (t, d) { try { window.chrome.webview.postMessage(JSON.stringify({ type: t, data: d })) } catch (e) {} }
   var scan = function (t, u) {
     if (typeof t !== "string") return
     if (u && String(u).indexOf("/api/") >= 0) post("FLOX_API", { url: String(u), body: t.slice(0, 4000) })
