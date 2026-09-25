@@ -41,6 +41,9 @@ use crate::ui::{
 };
 use crate::vm::{details as dvm, home as hvm, search as svm};
 
+mod login_screen;
+mod settings_screen;
+
 // ---------------------------------------------------------------------------
 // Services
 
@@ -99,6 +102,10 @@ pub trait LibraryView: Send + Sync {
     fn titles(&self) -> Vec<(TmdbId, MediaType)>;
     /// The prints of one movie or episode.
     fn prints(&self, key: EpisodeKey) -> Vec<Print>;
+    /// Every quality uploaded anywhere in the channel (Settings' Default quality).
+    fn all_qualities(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// The qualities uploaded for `key`, in index order (tallest first).
@@ -134,6 +141,10 @@ impl LibraryView for LibraryIndex {
                 newest_message_id: e.newest_message_id,
             })
             .collect()
+    }
+
+    fn all_qualities(&self) -> Vec<String> {
+        self.all().map(|e| e.quality.clone()).collect()
     }
 }
 
@@ -362,6 +373,8 @@ struct Graphs {
     home: FocusGraph,
     search: FocusGraph,
     details: FocusGraph,
+    settings: FocusGraph,
+    login: FocusGraph,
     /// Placeholder screens (Queue, Library, Settings, Login, Player).
     other: FocusGraph,
 }
@@ -372,6 +385,8 @@ impl Graphs {
             Screen::Home => &self.home,
             Screen::Search => &self.search,
             Screen::Details => &self.details,
+            Screen::Settings => &self.settings,
+            Screen::Login => &self.login,
             _ => &self.other,
         }
     }
@@ -381,6 +396,8 @@ impl Graphs {
             Screen::Home => &mut self.home,
             Screen::Search => &mut self.search,
             Screen::Details => &mut self.details,
+            Screen::Settings => &mut self.settings,
+            Screen::Login => &mut self.login,
             _ => &mut self.other,
         }
     }
@@ -405,6 +422,8 @@ pub struct Shell {
     search_cards: CardList,
     seasons: Rc<VecModel<Season>>,
     episodes: Rc<VecModel<Episode>>,
+    settings_screen: settings_screen::SettingsScreen,
+    login_screen: login_screen::LoginScreen,
 }
 
 fn modifiers(control: bool, shift: bool, alt: bool, meta: bool) -> Modifiers {
@@ -431,6 +450,8 @@ impl Shell {
                 home: FocusGraph::with_zones(hvm::zones(0, 0, 0, 0)),
                 search: FocusGraph::with_zones(svm::zones(0, 1)),
                 details: FocusGraph::with_zones(dvm::zones(false, 0, 0)),
+                settings: FocusGraph::new(),
+                login: FocusGraph::new(),
                 other: FocusGraph::new(),
             }),
             home: RefCell::new(HomeModel {
@@ -452,6 +473,8 @@ impl Shell {
             search_cards: CardList::new(),
             seasons: Rc::new(VecModel::default()),
             episodes: Rc::new(VecModel::default()),
+            settings_screen: settings_screen::SettingsScreen::new(),
+            login_screen: login_screen::LoginScreen::new(),
         });
         shell.bind(ui);
         shell
@@ -493,6 +516,9 @@ impl Shell {
         search.on_edited(move |text| shell.search_edited(&text, false));
         let shell = self.clone();
         search.on_accepted(move |text| shell.search_edited(&text, true));
+
+        self.bind_settings(ui);
+        self.bind_login(ui);
     }
 
     /// Starts every Home load and the Telegram and settings watchers.
@@ -651,6 +677,11 @@ impl Shell {
         let Some(action) = key_action(text, modifiers, editing) else {
             return false;
         };
+        if let KeyAction::Move(direction @ (Direction::Left | Direction::Right)) = action {
+            if self.settings_cycle(direction) {
+                return true;
+            }
+        }
         match action {
             KeyAction::Search => {
                 if screen == Screen::Search {
@@ -698,6 +729,9 @@ impl Shell {
     }
 
     fn back_key(self: &Rc<Self>) {
+        if self.close_settings_dialog() {
+            return;
+        }
         if self.screen() == Screen::Search {
             let in_grid = self.focus().is_some_and(|f| f.zone == svm::GRID);
             let results = self.search_cards.len();
@@ -732,6 +766,8 @@ impl Shell {
                 None
             }
             (Screen::Details, dvm::EPISODES) => self.episode_play(focus.index).map(Route::Player),
+            (Screen::Settings, _) => self.settings_activate(focus),
+            (Screen::Login, _) => self.login_activate(focus),
             _ => None,
         };
         if let Some(route) = target {
@@ -800,6 +836,8 @@ impl Shell {
                 }
             }
             Route::Player(request) => tracing::info!("play {request:?}"),
+            Route::Settings => self.show_settings(fresh),
+            Route::Login => self.show_login(fresh),
             _ => {}
         }
         self.sync_focus();
@@ -975,6 +1013,7 @@ impl Shell {
         }
         self.render_library();
         self.maybe_load_library();
+        self.account_auth_changed();
     }
 
     fn on_settings(self: &Rc<Self>, next: Settings) {
@@ -993,6 +1032,7 @@ impl Shell {
         {
             self.refresh_continue();
         }
+        self.render_settings();
     }
 
     // -- search -------------------------------------------------------------

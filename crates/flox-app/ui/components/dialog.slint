@@ -46,6 +46,7 @@ export component Dialog inherits Rectangle {
         x: (root.width - self.width) / 2;
         y: (root.height - self.height) / 2;
         width: root.panel-width;
+        height: min(self.preferred-height, root.height - 2 * Tokens.screen-padding);
         label: root.label;
         title: root.title;
 

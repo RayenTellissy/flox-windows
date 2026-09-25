@@ -1,0 +1,198 @@
+// The three settings-style dialogs, built on Dialog (card panel over a dimmed
+// window). Buttons sit bottom-right, CANCEL (index 0) then OK (index 1), as in
+// Android's AlertDialog. Rust opens them with FocusGraph::push_modal over the
+// zones passed in, and answers CENTER on an option or a button.
+//
+// - ChoiceDialog: a single-choice list; the current option carries a filled mark.
+//   The list scrolls when it is taller than 360 px and keeps the focused option in
+//   view.
+// - TextDialog: an optional helper line, one TextField (masked when `secret`), an
+//   optional error stamp, CANCEL and OK.
+// - ConfirmDialog: a message, CANCEL and OK.
+import { Tokens } from "../tokens.slint";
+import { Dialog } from "dialog.slint";
+import { FocusState, FocusArea, FocusRing } from "focus.slint";
+import { Caption, Eyebrow, Body } from "text.slint";
+import { FilledButton, GhostButton } from "buttons.slint";
+import { TextField } from "text_field.slint";
+import { SelectionMark } from "episode.slint";
+
+// One option: the mark, then the label. Primary text when it is the current one.
+component ChoiceOption inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    in property <int> zone: -1;
+    in property <int> index: 0;
+    out property <bool> focused: root.zone >= 0 && FocusState.zone == root.zone && FocusState.index == root.index;
+
+    background: Tokens.card;
+    border-radius: 0;
+
+    HorizontalLayout {
+        padding-left: Tokens.space-md;
+        padding-right: Tokens.space-md;
+        spacing: Tokens.space-md;
+
+        VerticalLayout {
+            alignment: center;
+
+            SelectionMark {
+                selected: root.selected;
+            }
+        }
+
+        Caption {
+            text: root.text;
+            color: root.selected ? Tokens.text-primary : Tokens.text-secondary;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+    }
+
+    FocusArea {
+        zone: root.zone;
+        index: root.index;
+    }
+
+    FocusRing {
+        focused: root.focused;
+        rest: Tokens.hairline;
+    }
+}
+
+// CANCEL, then OK when `ok-label` is set, right-aligned.
+component DialogButtons inherits HorizontalLayout {
+    in property <int> zone: -1;
+    in property <string> ok-label;
+
+    alignment: end;
+    spacing: Tokens.space-md;
+
+    GhostButton {
+        text: "CANCEL";
+        zone: root.zone;
+        index: 0;
+    }
+
+    if root.ok-label != "": FilledButton {
+        text: root.ok-label;
+        zone: root.zone;
+        index: 1;
+    }
+}
+
+export component ChoiceDialog inherits Dialog {
+    in property <[string]> options;
+    in property <int> current;
+    in property <int> options-zone: -1;
+    in property <int> buttons-zone: -1;
+
+    property <length> row-height: 56px;
+    property <length> pitch: root.row-height + Tokens.space-xxs;
+    property <length> list-height: max(0px, root.options.length * root.pitch - Tokens.space-xxs);
+    property <int> focused-index: FocusState.zone == root.options-zone ? FocusState.index : -1;
+
+    panel-width: 560px;
+
+    function reveal(index: int) {
+        if index >= 0 {
+            // The offset (>= 0) that shows the option, moving as little as possible.
+            flick.content-y = -clamp(
+                (index * root.pitch < -flick.content-y) ? index * root.pitch
+                    : ((index * root.pitch + root.row-height > -flick.content-y + flick.height) ? index * root.pitch + root.row-height - flick.height : -flick.content-y),
+                0px,
+                max(0px, root.list-height - flick.height));
+        }
+    }
+
+    changed focused-index => {
+        root.reveal(root.focused-index);
+    }
+
+    init => {
+        root.reveal(root.focused-index >= 0 ? root.focused-index : root.current);
+    }
+
+    flick := Flickable {
+        height: min(root.list-height, 360px);
+        content-height: root.list-height;
+
+        for option[i] in root.options: ChoiceOption {
+            x: 0;
+            y: i * root.pitch;
+            width: flick.width;
+            height: root.row-height;
+            text: option;
+            selected: i == root.current;
+            zone: root.options-zone;
+            index: i;
+        }
+    }
+
+    DialogButtons {
+        zone: root.buttons-zone;
+    }
+}
+
+export component TextDialog inherits Dialog {
+    in property <string> message;
+    in-out property <string> text;
+    in property <string> placeholder;
+    in property <bool> secret;
+    in property <string> error;
+    in property <int> field-zone: -1;
+    in property <int> buttons-zone: -1;
+
+    callback edited(text: string);
+    callback accepted(text: string);
+
+    panel-width: 640px;
+
+    if root.message != "": Caption {
+        text: root.message;
+        wrap: word-wrap;
+    }
+
+    TextField {
+        text <=> root.text;
+        placeholder: root.placeholder;
+        input-type: root.secret ? InputType.password : InputType.text;
+        zone: root.field-zone;
+        index: 0;
+        edited(text) => {
+            root.edited(text);
+        }
+        accepted(text) => {
+            root.accepted(text);
+        }
+    }
+
+    if root.error != "": Eyebrow {
+        text: root.error;
+        color: Tokens.text-primary;
+    }
+
+    DialogButtons {
+        zone: root.buttons-zone;
+        ok-label: "OK";
+    }
+}
+
+export component ConfirmDialog inherits Dialog {
+    in property <string> message;
+    in property <int> buttons-zone: -1;
+
+    panel-width: 640px;
+
+    Body {
+        text: root.message;
+        color: Tokens.text-secondary;
+        wrap: word-wrap;
+    }
+
+    DialogButtons {
+        zone: root.buttons-zone;
+        ok-label: "OK";
+    }
+}
