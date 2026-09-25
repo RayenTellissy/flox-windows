@@ -16,12 +16,13 @@ use flox_app::fixtures::{
     FixtureCatalog, FixtureImages, FixtureLibrary, FixtureLibrarySource, Fixtures, DEFAULT_PATH,
 };
 use flox_app::focus::Modifiers;
-use flox_app::ui::{FocusState, LoginState, LoginStep, SettingsDialog, SettingsState};
+use flox_app::ui::{FocusState, HomeState, LoginState, LoginStep, SettingsDialog, SettingsState};
 use flox_app::vm::settings::{row_ids, RowId};
 use flox_app::{AppWindow, Screen};
 use flox_core::progress::ProgressStore;
 use flox_core::settings::{Settings, SettingsStore};
 use flox_td::auth::AuthState;
+use parking_lot::RwLock;
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
 use slint::platform::{Key, Platform, WindowAdapter};
 use slint::{ComponentHandle, Model, PhysicalSize, Rgb8Pixel};
@@ -55,9 +56,9 @@ fn services(dir: &Path) -> (Arc<Services>, Arc<ProgressStore>) {
         progress: progress.clone(),
         catalog: Arc::new(FixtureCatalog(fixtures)),
         images: Arc::new(FixtureImages),
-        telegram: Telegram::Offline {
+        telegram: RwLock::new(Telegram::Offline {
             library: Arc::new(FixtureLibrarySource(library)),
-        },
+        }),
     });
     (services, progress)
 }
@@ -297,6 +298,21 @@ fn settings_and_login_snapshot() {
     });
     assert_eq!(ui.get_screen(), Screen::Settings);
     assert_eq!(value(&ui, RowId::Account), "SIGNED IN");
+
+    // The Telegram stack is replaced while the app runs (credentials cleared, then
+    // set again): Settings and Home follow the stack in effect.
+    let offline = services.telegram();
+    services.set_telegram(Telegram::NotConfigured);
+    shell.telegram_replaced();
+    assert_eq!(value(&ui, RowId::Account), "NOT CONFIGURED");
+    let home = ui.global::<HomeState>();
+    assert_eq!(home.get_library_prompt(), "SET UP TELEGRAM");
+    assert!(!home.get_telegram_ready());
+    services.set_telegram(offline);
+    shell.telegram_replaced();
+    assert_eq!(value(&ui, RowId::Account), "SIGNED IN");
+    assert!(home.get_telegram_ready());
+
     press(&shell, Key::Escape);
     assert_eq!(ui.get_screen(), Screen::Home);
 }

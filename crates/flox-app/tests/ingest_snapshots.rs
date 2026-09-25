@@ -31,6 +31,7 @@ use flox_core::settings::{Settings, SettingsStore};
 use flox_rip::hub::{HubFile, Variant};
 use flox_rip::job::{Job, JobState, JobView, Source, Tag};
 use flox_td::library::{Entry, Part};
+use parking_lot::RwLock;
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
 use slint::platform::{Key, Platform, WindowAdapter};
 use slint::{ComponentHandle, Model, PhysicalSize, Rgb8Pixel};
@@ -63,9 +64,9 @@ fn services(dir: &Path, fixtures: Arc<Fixtures>) -> Arc<Services> {
         progress: Arc::new(ProgressStore::open(&history).unwrap()),
         catalog: Arc::new(FixtureCatalog(fixtures)),
         images: Arc::new(FixtureImages),
-        telegram: Telegram::Offline {
+        telegram: RwLock::new(Telegram::Offline {
             library: Arc::new(FixtureLibrarySource(library)),
-        },
+        }),
     })
 }
 

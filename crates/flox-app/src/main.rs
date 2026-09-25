@@ -12,10 +12,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Context;
-use flox_app::app::{AppContext, QueueEvents, Services, Telegram};
+use flox_app::app::{AppContext, Services, Telegram};
 use flox_app::fixtures::{
     FixtureCatalog, FixtureImages, FixtureLibrary, FixtureLibrarySource, Fixtures,
 };
+use flox_app::launch::{start_queue, start_telegram};
 use flox_core::images::{ImageCache, DISK_BYTES, MEM_BYTES};
 use flox_core::paths::{AppPaths, Dirs};
 use flox_core::progress::ProgressStore;
@@ -23,14 +24,8 @@ use flox_core::settings::{Settings, SettingsStore};
 use flox_core::tmdb::Tmdb;
 use flox_core::tools::{self, Tool};
 use flox_player::ffi::MpvLib;
-use flox_rip::queue::{Queue, QueueDeps};
-use flox_rip::tools::ToolPaths;
 use flox_sys::dirs::SystemDirs;
-use flox_td::auth::Auth;
-use flox_td::client::{TdClient, TdParams};
-use flox_td::ffi::TdJson;
-use flox_td::library::Library;
-use flox_td::transport::TdTransport;
+use parking_lot::RwLock;
 
 /// Command-line options.
 #[derive(Debug, Default)]
@@ -99,69 +94,6 @@ fn open_progress(
     }
 }
 
-/// Starts TDLib when the API id and hash are set and tdjson resolves.
-fn start_telegram(
-    runtime: &tokio::runtime::Runtime,
-    paths: &AppPaths,
-    settings: &Settings,
-) -> (Telegram, Option<Arc<TdClient>>, Option<Arc<Library>>) {
-    let (Some(api_id), Some(api_hash)) = (
-        settings.effective_telegram_api_id(),
-        settings.effective_telegram_api_hash(),
-    ) else {
-        return (Telegram::NotConfigured, None, None);
-    };
-    let path_env = std::env::var_os("PATH");
-    let Some(tdjson) = tools::resolve(
-        Tool::TdJson,
-        &SystemDirs.app_dir(),
-        path_env.as_deref(),
-        settings.tdjson_path.as_deref(),
-    ) else {
-        tracing::warn!("{} not found; Telegram is off", Tool::TdJson.file_name());
-        return (Telegram::Unavailable, None, None);
-    };
-    let lib = match TdJson::load(&tdjson) {
-        Ok(lib) => lib,
-        Err(e) => {
-            tracing::warn!("cannot load {}: {e}", tdjson.display());
-            return (Telegram::Unavailable, None, None);
-        }
-    };
-    let params = TdParams {
-        api_id,
-        api_hash,
-        db_dir: paths.tdlib_db.clone(),
-        files_dir: paths.tdlib_files.clone(),
-        device_model: if cfg!(windows) {
-            "Windows"
-        } else {
-            std::env::consts::OS
-        }
-        .to_owned(),
-        app_version: flox_core::VERSION.to_owned(),
-    };
-    let _entered = runtime.enter();
-    let client = match TdClient::start(lib, params) {
-        Ok(client) => client,
-        Err(e) => {
-            tracing::warn!("cannot start TDLib: {e}");
-            return (Telegram::Unavailable, None, None);
-        }
-    };
-    let transport: Arc<dyn TdTransport> = client.clone();
-    let auth = Arc::new(Auth::new(transport.clone()));
-    let library = Arc::new(Library::new(transport));
-    (
-        Telegram::Connected {
-            auth,
-            library: library.clone(),
-        },
-        Some(client),
-        Some(library),
-    )
-}
-
 /// Loads libmpv from the settings override, the app directory or `PATH`.
 fn load_libmpv(settings: &Settings) -> Option<Arc<MpvLib>> {
     let path_env = std::env::var_os("PATH");
@@ -181,50 +113,6 @@ fn load_libmpv(settings: &Settings) -> Option<Arc<MpvLib>> {
             None
         }
     }
-}
-
-/// The upload queue, when Telegram is running and ffmpeg and ffprobe resolve. Jobs
-/// work under `%TEMP%\flox\<uuid>`; VidLink pages are sniffed with WebView2.
-fn start_queue(
-    runtime: &tokio::runtime::Runtime,
-    paths: &AppPaths,
-    settings: &SettingsStore,
-    td: Option<&Arc<TdClient>>,
-) -> Option<Arc<Queue>> {
-    let td = td?;
-    let s = settings.get();
-    let app_dir = SystemDirs.app_dir();
-    let path_env = std::env::var_os("PATH");
-    let find = |tool: Tool, over: Option<&std::path::Path>| {
-        let found = tools::resolve(tool, &app_dir, path_env.as_deref(), over);
-        if found.is_none() {
-            tracing::warn!("{} not found", tool.file_name());
-        }
-        found
-    };
-    let ffmpeg = find(Tool::Ffmpeg, s.ffmpeg_path.as_deref());
-    let ffprobe = find(Tool::Ffprobe, s.ffmpeg_path.as_deref());
-    let ytdlp = find(Tool::YtDlp, s.ytdlp_path.as_deref());
-    let (Some(ffmpeg), Some(ffprobe)) = (ffmpeg, ffprobe) else {
-        tracing::warn!("the upload queue is off until ffmpeg and ffprobe are found");
-        return None;
-    };
-    let transport: Arc<dyn TdTransport> = td.clone();
-    let _entered = runtime.enter();
-    Some(Queue::new(QueueDeps {
-        td: transport,
-        sniffer: Some(flox_web::platform_sniffer(
-            flox_web::assets::ScriptOptions::default(),
-        )),
-        tools: ToolPaths {
-            ffmpeg,
-            ffprobe,
-            ytdlp,
-        },
-        temp_root: paths.temp.clone(),
-        settings: settings.clone(),
-        hooks: Arc::new(QueueEvents::default()),
-    }))
 }
 
 /// Offline services from a fixture file. Watch history is seeded into a scratch
@@ -249,9 +137,9 @@ fn fixture_services(
         progress: progress.clone(),
         catalog: Arc::new(FixtureCatalog(fixtures)),
         images: Arc::new(FixtureImages),
-        telegram: Telegram::Offline {
+        telegram: RwLock::new(Telegram::Offline {
             library: Arc::new(FixtureLibrarySource(library)),
-        },
+        }),
     };
     Ok((services, progress))
 }
@@ -283,21 +171,23 @@ fn main() -> anyhow::Result<()> {
             )?);
             let tmdb = Tmdb::new(settings.clone())?;
             let images = ImageCache::new(paths.image_cache.clone(), MEM_BYTES, DISK_BYTES);
-            let (telegram, td, library) = start_telegram(&runtime, &paths, &settings.get());
+            let stack = start_telegram(runtime.handle(), &paths, &settings.get());
             let services = Services {
                 settings: settings.clone(),
                 progress: progress.clone(),
                 catalog: Arc::new(tmdb),
                 images: Arc::new(images),
-                telegram,
+                telegram: RwLock::new(stack.telegram),
             };
-            (services, progress, td, library)
+            (services, progress, stack.client, stack.library)
         }
     };
 
     let player_lib = load_libmpv(&settings.get());
 
-    let queue = start_queue(&runtime, &paths, &settings, td.as_ref());
+    let queue = td
+        .as_ref()
+        .and_then(|td| start_queue(runtime.handle(), &paths, &settings, td));
     flox_app::run(AppContext {
         runtime,
         paths,

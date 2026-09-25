@@ -3,6 +3,7 @@
 pub mod app;
 pub mod fixtures;
 pub mod focus;
+pub mod launch;
 pub mod player;
 pub mod router;
 pub mod vm;

@@ -188,7 +188,7 @@ impl Ingest {
     /// From the app's services. With fixtures (offline Telegram) the queue is an
     /// in-memory list that keeps jobs queued, so the ingest screens can be tried.
     pub fn from_context(ctx: &AppContext) -> Self {
-        let offline = matches!(ctx.services.telegram, Telegram::Offline { .. });
+        let offline = matches!(ctx.services.telegram(), Telegram::Offline { .. });
         let queue: Option<Arc<dyn JobQueue>> = match &ctx.queue {
             Some(q) => Some(q.clone()),
             None if offline => Some(Arc::new(crate::fixtures::FixtureQueue::default())),
@@ -401,6 +401,30 @@ impl Shell {
     pub fn set_ingest(self: &Rc<Self>, ingest: Ingest) {
         let rx = ingest.queue.as_ref().map(|q| q.snapshot());
         *self.ingest.backend.borrow_mut() = Some(ingest);
+        if let Some(rx) = rx {
+            self.pull_queue();
+            let shell = self.clone();
+            self.exec.watch(rx, move |views| shell.on_queue(views));
+        }
+    }
+
+    /// Telegram started while the app runs: the Library manager gets the channel
+    /// admin and, when one could be built, the upload queue arrives and is followed.
+    /// Without an earlier [`Shell::set_ingest`] this is one.
+    pub fn connect_ingest(
+        self: &Rc<Self>,
+        queue: Option<Arc<dyn JobQueue>>,
+        admin: Option<Arc<dyn LibraryAdmin>>,
+    ) {
+        let rx = queue.as_ref().map(|q| q.snapshot());
+        {
+            let mut backend = self.ingest.backend.borrow_mut();
+            let backend = backend.get_or_insert_with(Ingest::none);
+            if queue.is_some() {
+                backend.queue = queue;
+            }
+            backend.admin = admin;
+        }
         if let Some(rx) = rx {
             self.pull_queue();
             let shell = self.clone();

@@ -21,6 +21,7 @@ use flox_app::{AppWindow, Screen};
 use flox_core::model::MediaType;
 use flox_core::progress::ProgressStore;
 use flox_core::settings::{Settings, SettingsStore};
+use parking_lot::RwLock;
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
 use slint::platform::{Key, Platform, WindowAdapter};
 use slint::{ComponentHandle, Model, PhysicalSize, Rgb8Pixel};
@@ -48,9 +49,9 @@ fn services(dir: &Path) -> Arc<Services> {
         progress: Arc::new(ProgressStore::open(&history).unwrap()),
         catalog: Arc::new(FixtureCatalog(fixtures)),
         images: Arc::new(FixtureImages),
-        telegram: Telegram::Offline {
+        telegram: RwLock::new(Telegram::Offline {
             library: Arc::new(FixtureLibrarySource(library)),
-        },
+        }),
     })
 }
 

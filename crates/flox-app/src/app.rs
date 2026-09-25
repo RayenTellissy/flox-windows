@@ -32,9 +32,12 @@ use flox_rip::queue::Queue;
 use flox_td::auth::{Auth, AuthState};
 use flox_td::client::TdClient;
 use flox_td::library::{Entry, Library, LibraryIndex};
+use parking_lot::RwLock;
 use slint::{ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, VecModel};
 
 use crate::focus::{key_action, Direction, Focus, FocusGraph, KeyAction, Modifiers, ZoneId};
+use crate::launch::{Integration, TelegramStack};
+use crate::player::mpv_engine::TdAccess;
 use crate::player::view::{LibraryPrints, PlayerDeps, PlayerView, Underlay};
 use crate::router::{PlayRequest, Route, Router, Transition};
 use crate::ui::{
@@ -181,6 +184,7 @@ impl LibrarySource for Library {
 }
 
 /// Telegram as the browse screens see it.
+#[derive(Clone)]
 pub enum Telegram {
     /// The API id or hash is missing.
     NotConfigured,
@@ -222,7 +226,22 @@ pub struct Services {
     pub progress: Arc<ProgressStore>,
     pub catalog: Arc<dyn Catalog>,
     pub images: Arc<dyn ImageSource>,
-    pub telegram: Telegram,
+    /// Swapped by [`crate::launch::Integration`] when the Telegram credentials change;
+    /// read it with [`Services::telegram`].
+    pub telegram: RwLock<Telegram>,
+}
+
+impl Services {
+    /// The Telegram stack in effect now.
+    pub fn telegram(&self) -> Telegram {
+        self.telegram.read().clone()
+    }
+
+    /// Replaces the Telegram stack. Call [`Shell::telegram_replaced`] afterwards so
+    /// the screens follow it.
+    pub fn set_telegram(&self, telegram: Telegram) {
+        *self.telegram.write() = telegram;
+    }
 }
 
 /// Long-lived services, created once in `main`.
@@ -232,7 +251,8 @@ pub struct AppContext {
     pub settings: SettingsStore,
     pub progress: Arc<ProgressStore>,
     pub services: Arc<Services>,
-    /// Present when API credentials are set and tdjson resolves.
+    /// Present when API credentials were set and tdjson resolved at launch. Later
+    /// starts and restarts go through [`crate::launch::Integration`].
     pub td: Option<Arc<TdClient>>,
     pub library: Option<Arc<Library>>,
     pub queue: Option<Arc<Queue>>,
@@ -450,6 +470,9 @@ pub struct Shell {
     episodes: Rc<VecModel<Episode>>,
     player: RefCell<Option<Rc<PlayerView>>>,
     player_deps: RefCell<Option<Rc<PlayerDeps>>>,
+    /// Bumped whenever the Telegram stack is replaced; auth watchers of an older stack
+    /// stop feeding the shell.
+    auth_generation: Cell<u64>,
     settings_screen: settings_screen::SettingsScreen,
     login_screen: login_screen::LoginScreen,
     ingest: ingest_shell::IngestShell,
@@ -469,7 +492,7 @@ impl Shell {
     /// to begin loading.
     pub fn new(ui: &AppWindow, services: Arc<Services>, exec: Exec) -> Rc<Shell> {
         let settings = services.settings.get();
-        let status = services.telegram.status();
+        let status = services.telegram().status();
         let shell = Rc::new(Shell {
             ui: ui.as_weak(),
             services,
@@ -506,6 +529,7 @@ impl Shell {
             episodes: Rc::new(VecModel::default()),
             player: RefCell::new(None),
             player_deps: RefCell::new(None),
+            auth_generation: Cell::new(0),
             settings_screen: settings_screen::SettingsScreen::new(),
             login_screen: login_screen::LoginScreen::new(),
             ingest: ingest_shell::IngestShell::default(),
@@ -599,11 +623,7 @@ impl Shell {
         self.render_library();
         self.maybe_load_library();
 
-        if let Telegram::Connected { auth, .. } = &self.services.telegram {
-            let shell = self.clone();
-            self.exec
-                .watch(auth.state(), move |state| shell.on_auth(state));
-        }
+        self.follow_auth();
         let shell = self.clone();
         self.exec
             .watch(self.services.settings.subscribe(), move |s| {
@@ -1100,7 +1120,7 @@ impl Shell {
     }
 
     fn load_library(self: &Rc<Self>) {
-        let Some(source) = self.services.telegram.library() else {
+        let Some(source) = self.services.telegram().library() else {
             return;
         };
         let generation = {
@@ -1165,12 +1185,56 @@ impl Shell {
         home.library = hvm::LibraryLoad::Idle;
     }
 
-    fn on_auth(self: &Rc<Self>, state: AuthState) {
-        let ready = matches!(state, AuthState::Ready { .. });
-        {
-            let mut home = self.home.borrow_mut();
-            home.status = hvm::TelegramStatus::Auth(state);
+    /// Follows the auth state of the Telegram stack in [`Services::telegram`], if it
+    /// is connected. Watchers installed for an earlier stack go quiet.
+    fn follow_auth(self: &Rc<Self>) {
+        let generation = self.auth_generation.get().wrapping_add(1);
+        self.auth_generation.set(generation);
+        if let Telegram::Connected { auth, .. } = self.services.telegram() {
+            let shell = Rc::downgrade(self);
+            self.exec.watch(auth.state(), move |state| {
+                if let Some(shell) = shell.upgrade() {
+                    if shell.auth_generation.get() == generation {
+                        shell.on_auth(state);
+                    }
+                }
+            });
         }
+    }
+
+    /// [`Services::telegram`] was replaced (new credentials, or Telegram started or
+    /// stopped while the app runs): show its status and follow its auth state.
+    pub fn telegram_replaced(self: &Rc<Self>) {
+        self.follow_auth();
+        let status = self.services.telegram().status();
+        self.on_status(status);
+    }
+
+    /// Gives the player the Telegram client and library that [`Services::telegram`]
+    /// now uses (the library path and its subtitles).
+    pub fn set_player_telegram(&self, td: Option<TdAccess>, library: Option<Arc<Library>>) {
+        let mut slot = self.player_deps.borrow_mut();
+        let Some(current) = slot.as_ref() else {
+            return;
+        };
+        *slot = Some(Rc::new(PlayerDeps {
+            mpv_lib: current.mpv_lib.clone(),
+            td,
+            library,
+            runtime: current.runtime.clone(),
+            sniffer: current.sniffer.clone(),
+            dev_file: current.dev_file.clone(),
+            underlay: current.underlay.clone(),
+        }));
+    }
+
+    fn on_auth(self: &Rc<Self>, state: AuthState) {
+        self.on_status(hvm::TelegramStatus::Auth(state));
+    }
+
+    fn on_status(self: &Rc<Self>, status: hvm::TelegramStatus) {
+        let ready = status.ready();
+        self.home.borrow_mut().status = status;
         if !ready {
             self.invalidate_library();
             *self.library.borrow_mut() = Arc::new(EmptyLibrary);
@@ -1613,18 +1677,32 @@ pub fn run(ctx: AppContext) -> anyhow::Result<()> {
     };
     shell.set_player_deps(PlayerDeps {
         mpv_lib: ctx.player_lib.clone(),
-        td: ctx
-            .td
-            .clone()
-            .map(|td| crate::player::mpv_engine::TdAccess {
-                transport: td,
-                runtime: ctx.runtime.handle().clone(),
-            }),
+        td: ctx.td.clone().map(|td| TdAccess {
+            transport: td,
+            runtime: ctx.runtime.handle().clone(),
+        }),
         library: ctx.library.clone(),
         runtime: Some(ctx.runtime.handle().clone()),
         sniffer: flox_web::platform_sniffer(flox_web::assets::ScriptOptions::default()),
         dev_file: ctx.dev_play.clone(),
         underlay,
+    });
+    // Fixtures have no Telegram to restart; everything else follows Settings.
+    let _integration = (!matches!(ctx.services.telegram(), Telegram::Offline { .. })).then(|| {
+        let integration = Integration::new(
+            ctx.runtime.handle().clone(),
+            ctx.paths.clone(),
+            ctx.services.clone(),
+            &shell,
+            TelegramStack {
+                telegram: ctx.services.telegram(),
+                client: ctx.td.clone(),
+                library: ctx.library.clone(),
+            },
+            ctx.queue.clone(),
+        );
+        integration.install(&shell);
+        integration
     });
     shell.start();
     if ctx.dev_play.is_some() {

@@ -2,7 +2,11 @@
 //! updates.
 //!
 //! `td_receive` returns messages for every client id in the process, so there
-//! must be exactly one [`TdClient`] per process.
+//! must be exactly one [`TdClient`] per process. New credentials do not need a
+//! second one: [`TdClient::restart_with`] closes the current TDLib instance, waits
+//! for `authorizationStateClosed`, and starts a fresh instance with the new
+//! parameters behind the same handle, so every holder of the client (auth, library,
+//! uploads, streams) follows it.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -82,7 +86,9 @@ struct Pending {
 /// State shared by the handle and the receive thread.
 struct Inner {
     lib: TdJson,
-    params: TdParams,
+    params: Mutex<TdParams>,
+    /// Serialises close and restart, so two restarts never leave two live instances.
+    lifecycle: tokio::sync::Mutex<()>,
     client_id: AtomicI32,
     next_extra: AtomicU64,
     pending: Mutex<HashMap<u64, Pending>>,
@@ -175,10 +181,24 @@ impl Inner {
             return;
         }
         if state.as_deref() == Some("authorizationStateWaitTdlibParameters") {
-            self.fire(current, self.params.to_request());
+            let request = self.params.lock().to_request();
+            self.fire(current, request);
         }
         // No subscribers is fine; the update is simply dropped.
         let _ = self.updates.send(Arc::new(v));
+    }
+
+    /// Closes the current instance and starts a new one, with `params` when given.
+    async fn restart(&self, params: Option<TdParams>) -> Result<()> {
+        let _lifecycle = self.lifecycle.lock().await;
+        self.close_current().await?;
+        if let Some(params) = params {
+            *self.params.lock() = params;
+        }
+        let id = self.lib.create_client_id();
+        self.client_id.store(id, Ordering::SeqCst);
+        self.kick(id);
+        Ok(())
     }
 
     async fn close_current(&self) -> Result<()> {
@@ -241,7 +261,8 @@ impl TdClient {
         let client_id = lib.create_client_id();
         let inner = Arc::new(Inner {
             lib,
-            params,
+            params: Mutex::new(params),
+            lifecycle: tokio::sync::Mutex::new(()),
             client_id: AtomicI32::new(client_id),
             next_extra: AtomicU64::new(1),
             pending: Mutex::new(HashMap::new()),
@@ -263,7 +284,21 @@ impl TdClient {
     /// Sends `close` and waits for `authorizationStateClosed`. Returns at once
     /// if the current instance is already closed.
     pub async fn close(&self) -> Result<()> {
+        let _lifecycle = self.inner.lifecycle.lock().await;
         self.inner.close_current().await
+    }
+
+    /// Closes the current TDLib instance, waits for `authorizationStateClosed`, then
+    /// starts a new instance that answers `setTdlibParameters` with `params` (new API
+    /// credentials). Updates keep flowing on the same broadcast, so subscribers such
+    /// as [`crate::auth::Auth`] follow the new instance's states.
+    pub async fn restart_with(&self, params: TdParams) -> Result<()> {
+        self.inner.restart(Some(params)).await
+    }
+
+    /// The parameters the current instance was (or will be) given.
+    pub fn params(&self) -> TdParams {
+        self.inner.params.lock().clone()
     }
 
     /// The current TDLib client id.
@@ -315,11 +350,7 @@ impl TdTransport for TdClient {
     }
 
     async fn restart(&self) -> Result<()> {
-        self.inner.close_current().await?;
-        let id = self.inner.lib.create_client_id();
-        self.inner.client_id.store(id, Ordering::SeqCst);
-        self.inner.kick(id);
-        Ok(())
+        self.inner.restart(None).await
     }
 }
 

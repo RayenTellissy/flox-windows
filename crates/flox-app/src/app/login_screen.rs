@@ -102,10 +102,9 @@ impl Shell {
     }
 
     fn login_effect(&self, effect: Effect) {
-        let Telegram::Connected { auth, .. } = &self.services.telegram else {
+        let Telegram::Connected { auth, .. } = self.services.telegram() else {
             return;
         };
-        let auth = auth.clone();
         self.exec.run(
             async move {
                 match effect {
@@ -235,11 +234,10 @@ impl Shell {
             Some(step) => vm::submission(step, text),
             None => None,
         };
-        let (Some(submit), Telegram::Connected { auth, .. }) = (submit, &self.services.telegram)
+        let (Some(submit), Telegram::Connected { auth, .. }) = (submit, self.services.telegram())
         else {
             return;
         };
-        let auth = auth.clone();
         self.exec.run(
             async move {
                 match submit {

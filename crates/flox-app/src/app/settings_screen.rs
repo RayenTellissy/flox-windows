@@ -4,19 +4,17 @@
 //!
 //! # Telegram credentials
 //!
-//! TDLib takes the API id and hash once, in `setTdlibParameters`, and
-//! [`flox_td::client::TdClient`] keeps them for its lifetime, so new credentials need
-//! a new client. The client is shared by [`Services::telegram`](super::Services)
-//! (auth and library), `AppContext::{td, library}` and the queue's uploader, all
-//! built once in `main` and held immutably, so the stack cannot be swapped from
-//! here. [`Shell::set_telegram_restart`] is the seam: when the id or hash in effect
-//! changes, the shell calls the installed hook with the new settings. The hook has
-//! to close the old client, start a new one from the same parameters `main` uses,
-//! put its auth and library behind `Services::telegram` (which then needs interior
-//! mutability), rewire the queue's uploader, and feed the new auth state to
-//! [`Shell::set_auth_state`]. With no hook installed, the change is saved and the
-//! account row reads `RESTART FLOX TO APPLY`, which is what happens on the next
-//! launch anyway.
+//! TDLib takes the API id and hash once, in `setTdlibParameters`, so new credentials
+//! need a new TDLib instance. When the id or hash in effect changes, the shell calls
+//! the hook installed with [`Shell::set_telegram_restart`] with the new settings. The
+//! app installs [`crate::launch::Integration`] there: it closes the running instance,
+//! waits for `authorizationStateClosed` and starts a new one with the new parameters
+//! behind the same client (only one client may exist per process), or starts the
+//! whole stack when Telegram was off, swaps [`Services::telegram`](super::Services),
+//! hands the client to the player and the queue, and calls
+//! [`Shell::telegram_replaced`], whose auth watcher feeds the new states to the
+//! screens as [`Shell::set_auth_state`] does. With no hook installed (snapshot tests),
+//! the change is saved and the account row reads `RESTART FLOX TO APPLY`.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -339,8 +337,7 @@ impl Shell {
                 Err(e) => tracing::warn!("clear watch history: {e}"),
             },
             Confirm::SignOut => {
-                if let Telegram::Connected { auth, .. } = &self.services.telegram {
-                    let auth = auth.clone();
+                if let Telegram::Connected { auth, .. } = self.services.telegram() {
                     self.exec
                         .run(async move { auth.log_out().await }, |result| {
                             if let Err(e) = result {

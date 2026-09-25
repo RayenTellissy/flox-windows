@@ -225,6 +225,12 @@ impl Queue {
         self.update(id, |v| v.progress = Some(progress.clamp(0.0, 1.0)));
     }
 
+    /// Forgets the cached library channel, so the next upload looks it up again (the
+    /// Telegram account changed underneath the queue).
+    pub fn reset_channel(&self) {
+        *self.channel.lock() = None;
+    }
+
     /// The library channel's chat id, found or created by the configured title.
     pub(crate) async fn chat_id(&self) -> Result<i64> {
         let title = self.deps.settings.get().telegram_channel;
@@ -370,5 +376,81 @@ async fn worker(me: Weak<Queue>, wake: Arc<Notify>, shutdown: CancellationToken)
         }
         let Some(queue) = me.upgrade() else { return };
         queue.drain().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    use async_trait::async_trait;
+    use flox_core::settings::Settings;
+    use serde_json::{json, Value};
+    use tokio::sync::broadcast;
+
+    use super::*;
+
+    /// A TDLib with one channel, counting the channel lookups.
+    struct OneChannel {
+        lookups: AtomicU32,
+        updates: broadcast::Sender<Arc<Value>>,
+    }
+
+    #[async_trait]
+    impl TdTransport for OneChannel {
+        async fn request(&self, req: Value) -> Result<Value> {
+            match req["@type"].as_str().unwrap_or_default() {
+                "loadChats" => Err(Error::Td {
+                    code: 404,
+                    message: "Not Found".into(),
+                }),
+                "getChats" => {
+                    self.lookups.fetch_add(1, Ordering::SeqCst);
+                    Ok(json!({"@type": "chats", "chat_ids": [7]}))
+                }
+                "getChat" => Ok(json!({"@type": "chat", "id": 7, "title": "Flox Library"})),
+                other => Err(Error::Other(format!("unexpected {other}"))),
+            }
+        }
+
+        fn updates(&self) -> broadcast::Receiver<Arc<Value>> {
+            self.updates.subscribe()
+        }
+    }
+
+    struct NoHooks;
+
+    impl QueueHooks for NoHooks {
+        fn busy_changed(&self, _busy: bool) {}
+        fn drained(&self, _any_failed: bool) {}
+    }
+
+    #[tokio::test]
+    async fn the_channel_is_cached_until_reset() {
+        let td = Arc::new(OneChannel {
+            lookups: AtomicU32::new(0),
+            updates: broadcast::channel(4).0,
+        });
+        let queue = Queue::new(QueueDeps {
+            td: td.clone(),
+            sniffer: None,
+            tools: ToolPaths {
+                ffmpeg: PathBuf::from("ffmpeg"),
+                ffprobe: PathBuf::from("ffprobe"),
+                ytdlp: None,
+            },
+            temp_root: PathBuf::from("/nonexistent/flox"),
+            settings: SettingsStore::new(
+                PathBuf::from("/nonexistent/settings.json"),
+                Settings::default(),
+            ),
+            hooks: Arc::new(NoHooks),
+        });
+        assert_eq!(queue.chat_id().await.unwrap(), 7);
+        assert_eq!(queue.chat_id().await.unwrap(), 7);
+        assert_eq!(td.lookups.load(Ordering::SeqCst), 1);
+        queue.reset_channel();
+        assert_eq!(queue.chat_id().await.unwrap(), 7);
+        assert_eq!(td.lookups.load(Ordering::SeqCst), 2);
     }
 }
