@@ -17,8 +17,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::split::PART_SIZE;
 
-/// The browser user agent sent with every download request.
-pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+/// The browser user agent sent with every download request ([`crate::USER_AGENT`]).
+pub use crate::USER_AGENT;
 
 /// Connect and read-idle timeout.
 pub const IDLE_TIMEOUT: Duration = Duration::from_secs(60);

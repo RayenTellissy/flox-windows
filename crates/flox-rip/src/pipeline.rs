@@ -271,7 +271,7 @@ async fn pull_hls(
     media: &Path,
     cancel: &CancellationToken,
 ) -> Result<()> {
-    let args = with_download_user_agent(mux::hls_args(&info.url, &info.headers, media));
+    let args = mux::hls_args(&info.url, &info.headers, media);
     process::run(
         &q.tools().ffmpeg,
         &args,
@@ -283,17 +283,6 @@ async fn pull_hls(
         cancel.clone(),
     )
     .await
-}
-
-/// Swaps the `-user_agent` value for the downloaders' user agent, so every request of a
-/// job presents the same browser.
-fn with_download_user_agent(mut args: Vec<OsString>) -> Vec<OsString> {
-    if let Some(i) = args.iter().position(|a| a == "-user_agent") {
-        if let Some(value) = args.get_mut(i + 1) {
-            *value = file::USER_AGENT.into();
-        }
-    }
-    args
 }
 
 /// The first caption whose language starts with "en", saved as `en.<ext>`. A failed
@@ -578,13 +567,12 @@ mod tests {
 
     #[test]
     fn hls_user_agent_is_the_downloaders() {
-        let args = with_download_user_agent(mux::hls_args(
-            "https://x/m.m3u8",
-            &[],
-            Path::new("/t/media.mp4"),
-        ));
+        let args = mux::hls_args("https://x/m.m3u8", &[], Path::new("/t/media.mp4"));
         let i = args.iter().position(|a| a == "-user_agent").unwrap();
         assert_eq!(args[i + 1], OsString::from(file::USER_AGENT));
+        let agent = args[i + 1].to_string_lossy().into_owned();
+        assert!(agent.contains("Windows NT 10.0; Win64; x64"), "{agent}");
+        assert!(agent.contains("Chrome/128.0.0.0"), "{agent}");
     }
 
     #[test]

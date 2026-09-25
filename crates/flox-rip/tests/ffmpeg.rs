@@ -227,7 +227,12 @@ async fn hls_args_pull_a_served_playlist_with_the_headers() -> Result<()> {
     assert!(requests.len() >= 2, "{} requests", requests.len());
     for r in &requests {
         let header = |k: &str| r.headers.get(k).and_then(|v| v.to_str().ok());
-        assert_eq!(header("user-agent"), Some(mux::USER_AGENT), "{}", r.url);
+        assert_eq!(
+            header("user-agent"),
+            Some(flox_rip::USER_AGENT),
+            "{}",
+            r.url
+        );
         assert_eq!(header("referer"), Some(mux::VIDLINK_REFERER), "{}", r.url);
         assert_eq!(header("origin"), Some("https://vidlink.pro"), "{}", r.url);
     }

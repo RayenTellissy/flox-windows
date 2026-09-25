@@ -33,8 +33,8 @@ pub use unwrap::unwrap_redirect;
 /// Site root.
 pub const BASE_URL: &str = "https://4khdhub.one";
 
-/// The desktop Chrome user agent every request is sent with.
-pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+/// The desktop Chrome user agent every request is sent with ([`crate::USER_AGENT`]).
+pub use crate::USER_AGENT;
 
 /// One release on a title page, such as `S04 SDR 2160p WEB-DL H265`.
 #[derive(Clone, Debug, PartialEq, Eq)]

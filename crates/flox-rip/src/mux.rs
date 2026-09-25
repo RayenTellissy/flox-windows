@@ -3,8 +3,7 @@
 use std::ffi::OsString;
 use std::path::Path;
 
-/// The Chrome 128 user agent the Mac passes to ffmpeg for HLS pulls (`Sniffer.userAgent`).
-pub const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+use crate::USER_AGENT;
 
 /// The Referer every HLS pull carries, replacing any the page sent.
 pub const VIDLINK_REFERER: &str = "https://vidlink.pro/";
@@ -24,8 +23,8 @@ pub fn header_block(headers: &[(String, String)]) -> String {
         .collect()
 }
 
-/// HLS remux: `-user_agent`, `-headers` (with the VidLink Referer), `-c copy -bsf:a aac_adtstoasc
-/// -movflags +faststart`.
+/// HLS remux: `-user_agent` ([`crate::USER_AGENT`], the downloaders' browser), `-headers`
+/// (with the VidLink Referer), `-c copy -bsf:a aac_adtstoasc -movflags +faststart`.
 pub fn hls_args(input: &str, headers: &[(String, String)], out: &Path) -> Vec<OsString> {
     let mut args = os(&[
         "-y",
