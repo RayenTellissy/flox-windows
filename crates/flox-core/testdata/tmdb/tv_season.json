@@ -1,0 +1,20 @@
+{
+  "id": 3624,
+  "season_number": 1,
+  "episodes": [
+    {
+      "season_number": 1,
+      "episode_number": 1,
+      "name": "Winter Is Coming",
+      "overview": "Lord Stark is troubled.",
+      "still_path": "/still1.jpg",
+      "runtime": 62
+    },
+    {
+      "episode_number": 2,
+      "name": "The Kingsroad",
+      "still_path": null,
+      "runtime": 0
+    }
+  ]
+}

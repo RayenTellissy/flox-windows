@@ -1,0 +1,47 @@
+{
+  "page": 1,
+  "results": [
+    {
+      "adult": false,
+      "id": 27205,
+      "title": "Inception",
+      "original_title": "Inception",
+      "release_date": "2010-07-15",
+      "poster_path": "/inception.jpg",
+      "overview": "Dreams within dreams.",
+      "popularity": 88.5,
+      "media_type": "movie"
+    },
+    {
+      "id": 6193,
+      "name": "Leonardo DiCaprio",
+      "poster_path": "/leo.jpg",
+      "popularity": 120.0,
+      "media_type": "person"
+    },
+    {
+      "id": 99,
+      "title": "No Poster",
+      "release_date": "2020-01-01",
+      "poster_path": null,
+      "overview": "Hidden.",
+      "popularity": 300.0,
+      "media_type": "movie"
+    },
+    {
+      "id": 100,
+      "title": "Empty Poster",
+      "poster_path": "",
+      "media_type": "movie"
+    },
+    {
+      "id": 603,
+      "title": "The Matrix",
+      "release_date": "",
+      "poster_path": "/matrix.jpg",
+      "media_type": "movie"
+    }
+  ],
+  "total_pages": 1,
+  "total_results": 5
+}

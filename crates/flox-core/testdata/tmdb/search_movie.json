@@ -1,0 +1,9 @@
+{
+  "page": 1,
+  "results": [
+    { "id": 3, "title": "Third", "release_date": "1999-01-01", "poster_path": "/3.jpg", "popularity": 10.0 },
+    { "id": 1, "title": "First", "release_date": "2005-01-01", "poster_path": "/1.jpg", "popularity": 50.0 },
+    { "id": 9, "title": "No Poster But Popular", "poster_path": null, "popularity": 99.0 },
+    { "id": 2, "title": "Second", "release_date": "2001-01-01", "poster_path": "/2.jpg", "popularity": 40.0 }
+  ]
+}
