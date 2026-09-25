@@ -17,9 +17,13 @@
 //!   overlay and hint are hidden while it is up, keys become page actions) and the page view is
 //!   refitted whenever the window size changes. `FLOX_FORCE_PAGE=1` skips native playback.
 //!
-//! Without libmpv every load fails, the controller ends in PLAYBACK FAILED and the hint says
-//! LIBMPV NOT FOUND. The child-HWND compositing fallback (plan section 2) would replace only
-//! [`Underlay`] and the engine's `vo`; it is not built.
+//! Under PLAYBACK FAILED the hint names the cause the controller recorded: SNIFF FAILED (no
+//! stream found on the page), PAGE PLAYER UNAVAILABLE (the fallback could not load; prefixed
+//! with LIBMPV NOT FOUND when mpv is missing too, since that is why the page was needed), or
+//! LIBMPV NOT FOUND (a native failure without libmpv).
+//!
+//! The child-HWND compositing fallback (the overlay in a second window over mpv's own) would
+//! replace only [`Underlay`] and the engine's `vo`; it is not built.
 
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
@@ -40,8 +44,8 @@ use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use tokio_util::sync::CancellationToken;
 
 use super::controller::{
-    Button, Controller, Effect, Engine, Input, Key, Meta, Phase, PlayerConfig, Prints, SystemClock,
-    ViewState, WATCHDOG_MS,
+    Button, Controller, Effect, Engine, FailCause, Input, Key, Meta, Phase, PlayerConfig, Prints,
+    SystemClock, ViewState, WATCHDOG_MS,
 };
 use super::mpv_engine::{create_mpv, EventMapper, MpvEngine, Streams, TdAccess};
 use super::web::PageSurface;
@@ -202,12 +206,25 @@ pub fn stamp_text(phase: Phase) -> &'static str {
     }
 }
 
-/// The bottom-right hint: the controller's, or why playback failed when libmpv is missing.
+/// Hint under PLAYBACK FAILED when the page had no stream.
+pub const SNIFF_FAILED: &str = "SNIFF FAILED";
+/// Hint under PLAYBACK FAILED when the page player could not load.
+pub const PAGE_UNAVAILABLE: &str = "PAGE PLAYER UNAVAILABLE";
+/// Hint under PLAYBACK FAILED when mpv could not be loaded.
+pub const LIBMPV_NOT_FOUND: &str = "LIBMPV NOT FOUND";
+
+/// The bottom-right hint: the controller's, or why playback failed (see the module docs).
 pub fn hint_text(view: &ViewState, mpv_missing: bool) -> String {
-    if view.phase == Phase::Failed && mpv_missing {
-        "LIBMPV NOT FOUND".to_owned()
-    } else {
-        view.hint.clone().unwrap_or_default()
+    let own = || view.hint.clone().unwrap_or_default();
+    if view.phase != Phase::Failed {
+        return own();
+    }
+    match (view.failure, mpv_missing) {
+        (Some(FailCause::Sniff), _) => SNIFF_FAILED.to_owned(),
+        (Some(FailCause::Page), true) => format!("{LIBMPV_NOT_FOUND} · {PAGE_UNAVAILABLE}"),
+        (Some(FailCause::Page), false) => PAGE_UNAVAILABLE.to_owned(),
+        (Some(FailCause::Native) | None, true) => LIBMPV_NOT_FOUND.to_owned(),
+        (Some(FailCause::Native) | None, false) => own(),
     }
 }
 
@@ -1398,6 +1415,7 @@ mod tests {
             overlay_visible: true,
             tracks: None,
             hint: None,
+            failure: None,
             eyebrow: "S1 · E3".to_owned(),
             title: "Title".to_owned(),
             position: "00:10".to_owned(),
@@ -1623,6 +1641,20 @@ mod tests {
         v.phase = Phase::Failed;
         assert_eq!(hint_text(&v, true), "LIBMPV NOT FOUND");
         assert_eq!(hint_text(&v, false), "+10 S");
+        v.failure = Some(FailCause::Native);
+        assert_eq!(hint_text(&v, true), "LIBMPV NOT FOUND");
+        assert_eq!(hint_text(&v, false), "+10 S");
+        v.failure = Some(FailCause::Sniff);
+        assert_eq!(hint_text(&v, true), "SNIFF FAILED");
+        assert_eq!(hint_text(&v, false), "SNIFF FAILED");
+        v.failure = Some(FailCause::Page);
+        assert_eq!(
+            hint_text(&v, true),
+            "LIBMPV NOT FOUND · PAGE PLAYER UNAVAILABLE"
+        );
+        assert_eq!(hint_text(&v, false), "PAGE PLAYER UNAVAILABLE");
+        v.phase = Phase::Native;
+        assert_eq!(hint_text(&v, true), "+10 S", "only under PLAYBACK FAILED");
     }
 
     #[test]

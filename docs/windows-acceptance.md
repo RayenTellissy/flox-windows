@@ -103,7 +103,7 @@ without TMDB or Telegram.
 - [ ] Play 60 s of a 4K HEVC 10-bit file and close the player. The `frame-drop-count N of M frames` line shows N below 1 % of M.
 - [ ] Space, ENTER, arrows (with acceleration while held), Esc/Backspace, M, Ctrl+R and F11 behave as in the plan's key table; moving the mouse shows the overlay and clicking the video toggles play.
 - [ ] While the player is open `powercfg /requests` lists `flox.exe` under `DISPLAY`; after closing it, `DISPLAY` no longer lists it.
-- [ ] Rename `libmpv-2.dll` away and play something: the player shows PLAYBACK FAILED with `LIBMPV NOT FOUND` (or falls back to the page player on a VidLink title) instead of crashing.
+- [ ] Rename `libmpv-2.dll` away and play something: the player falls back to the page player on a VidLink title instead of crashing; if that fails too it shows PLAYBACK FAILED with `LIBMPV NOT FOUND · PAGE PLAYER UNAVAILABLE`, and a library print shows `LIBMPV NOT FOUND` once the VidLink fallback is exhausted.
 
 ## VidLink page path (sniff, native playback, page fallback)
 

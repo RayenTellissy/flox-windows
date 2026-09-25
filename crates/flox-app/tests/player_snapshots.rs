@@ -4,7 +4,7 @@
 //! - `player_overlay`: the overlay over a solid black frame (scrim, BACK, eyebrow, title,
 //!   seek bar with the buffered band, times, the full button row, the tracks panel, a hint);
 //! - `player_resume`: the ASK dialog;
-//! - `player_failed`: PLAYBACK FAILED with the LIBMPV NOT FOUND hint, reached through the real
+//! - `player_failed`: PLAYBACK FAILED with the SNIFF FAILED hint, reached through the real
 //!   controller flow with no libmpv, no WebView2 and no page player.
 
 // Test helpers outside #[test] functions panic on setup failures too.
@@ -112,6 +112,7 @@ fn overlay_state() -> ViewState {
             selected: 0,
         }),
         hint: Some("VOLUME · 85%".to_owned()),
+        failure: None,
         eyebrow: "S1 · E3".to_owned(),
         title: "In Perpetuity".to_owned(),
         position: "12:34".to_owned(),
@@ -207,7 +208,11 @@ fn player_screen_snapshots() {
     press(&shell, Key::Return);
     assert_eq!(player.phase(), Some(Phase::Failed));
     assert_eq!(s.get_stamp().as_str(), "PLAYBACK FAILED");
-    assert_eq!(s.get_hint().as_str(), "LIBMPV NOT FOUND");
+    assert_eq!(
+        s.get_hint().as_str(),
+        "SNIFF FAILED",
+        "the sniff never found a stream"
+    );
     assert!(!s.get_overlay());
     let failed = snapshot(&window, "player_failed");
     let grey = failed
@@ -239,7 +244,10 @@ fn player_screen_snapshots() {
     let player = shell.player_view().unwrap();
     assert_eq!(player.phase(), Some(Phase::Failed));
     assert_eq!(s.get_title().as_str(), "clip");
-    assert_eq!(s.get_hint().as_str(), "LIBMPV NOT FOUND");
+    assert_eq!(
+        s.get_hint().as_str(),
+        "LIBMPV NOT FOUND · PAGE PLAYER UNAVAILABLE"
+    );
     press(&shell, Key::Backspace);
     assert!(shell.player_view().is_none());
 }

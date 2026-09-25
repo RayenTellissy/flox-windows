@@ -350,6 +350,17 @@ pub struct PlayerConfig {
     pub ui_language: String,
 }
 
+/// Why the last attempt failed; decides the hint under PLAYBACK FAILED.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FailCause {
+    /// The sniffer found no stream on the VidLink page (or timed out looking).
+    Sniff,
+    /// The page player could not load (none on this platform, or the page failed).
+    Page,
+    /// mpv could not play the source (libmpv missing, or the stream was unplayable).
+    Native,
+}
+
 /// Which surface is up.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
@@ -383,6 +394,8 @@ pub struct ViewState {
     pub overlay_visible: bool,
     pub tracks: Option<TracksPanel>,
     pub hint: Option<String>,
+    /// Why playback failed, while [`Phase::Failed`] shows.
+    pub failure: Option<FailCause>,
     /// `S1 · E3` or `MOVIE`.
     pub eyebrow: String,
     pub title: String,
@@ -539,6 +552,8 @@ pub struct Controller<E: Engine, C: Clock, P: Prints> {
     hint: Option<String>,
     hint_hide_at: u64,
     watchdog_at: Option<u64>,
+    /// The cause of the latest failed attempt.
+    cause: Option<FailCause>,
     nav_mode: bool,
     menu: Press,
     center: Press,
@@ -592,6 +607,7 @@ impl<E: Engine, C: Clock, P: Prints> Controller<E, C, P> {
             hint: None,
             hint_hide_at: 0,
             watchdog_at: None,
+            cause: None,
             nav_mode: false,
             menu: Press::default(),
             center: Press::default(),
@@ -692,6 +708,7 @@ impl<E: Engine, C: Clock, P: Prints> Controller<E, C, P> {
             tracks: (self.native_shown && self.overlay_shown && self.tracks_open)
                 .then(|| self.audio_panel()),
             hint: self.hint.clone(),
+            failure: if self.failed { self.cause } else { None },
             eyebrow: match self.meta.media {
                 MediaType::Tv => format!("S{} · E{}", self.meta.season, self.meta.episode),
                 MediaType::Movie => "MOVIE".to_owned(),
@@ -769,6 +786,7 @@ impl<E: Engine, C: Clock, P: Prints> Controller<E, C, P> {
             }
             Input::SniffFailed { seq } => {
                 if seq == self.seq && !self.native_active {
+                    self.cause = Some(FailCause::Sniff);
                     self.on_load_failed();
                 }
             }
@@ -819,6 +837,7 @@ impl<E: Engine, C: Clock, P: Prints> Controller<E, C, P> {
             }
             Input::PageFailed => {
                 if self.page_active {
+                    self.cause = Some(FailCause::Page);
                     self.on_load_failed();
                 }
             }
@@ -975,6 +994,7 @@ impl<E: Engine, C: Clock, P: Prints> Controller<E, C, P> {
         if !self.native_active {
             return;
         }
+        self.cause = Some(FailCause::Native);
         let at = self.playback.time.max(0.0) as u32;
         self.stop_native();
         if self.playing_library {
@@ -1147,6 +1167,13 @@ impl<E: Engine, C: Clock, P: Prints> Controller<E, C, P> {
             if now >= at {
                 self.watchdog_at = None;
                 if !self.has_playback {
+                    self.cause = Some(if self.page_active {
+                        FailCause::Page
+                    } else if self.native_active {
+                        FailCause::Native
+                    } else {
+                        FailCause::Sniff
+                    });
                     self.on_load_failed();
                 }
             }
@@ -2175,6 +2202,7 @@ mod tests {
         assert_eq!(r.c.phase(), Phase::Failed);
         let fx = r.key(Key::Center);
         assert_eq!(r.c.phase(), Phase::Loading);
+        assert_eq!(r.c.view().failure, None, "only shown while failed");
         assert!(fx.iter().any(|e| matches!(e, Effect::Sniff { .. })));
         // the retry gets its own automatic reload again
         let fx = r.tick(WATCHDOG_MS);
@@ -2215,6 +2243,7 @@ mod tests {
         let seq = Rig::seq(&fx).unwrap_or(0);
         r.c.handle(Input::SniffFailed { seq });
         assert_eq!(r.c.phase(), Phase::Failed);
+        assert_eq!(r.c.view().failure, Some(FailCause::Sniff));
     }
 
     // ---- start position ----
@@ -2847,6 +2876,7 @@ mod tests {
         assert!(matches!(r.calls().last(), Some(Call::PageLoad(_))));
         r.c.handle(Input::PageFailed);
         assert_eq!(r.c.phase(), Phase::Failed);
+        assert_eq!(r.c.view().failure, Some(FailCause::Page));
         assert_eq!(r.calls().last(), Some(&Call::PageClose));
     }
 
@@ -2932,6 +2962,7 @@ mod tests {
         r.tick(WATCHDOG_MS);
         assert_eq!(r.c.phase(), Phase::Failed);
         assert_eq!(r.c.view().phase, Phase::Failed);
+        assert_eq!(r.c.view().failure, Some(FailCause::Sniff));
     }
 
     #[test]
